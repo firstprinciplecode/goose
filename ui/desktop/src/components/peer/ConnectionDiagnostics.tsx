@@ -6,12 +6,14 @@ import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { CheckCircle2, XCircle, AlertCircle, Loader2, RefreshCw, Copy, Check } from 'lucide-react';
 import { loadSettings, getIceServers } from '../../peer/settings';
+import type { PeerNgrokStatus } from '../../preload';
 
 interface ConnectionDiagnosticsProps {
   open: boolean;
   onClose: () => void;
   // eslint-disable-next-line no-undef
   peerConnection?: RTCPeerConnection | null;
+  ngrokStatus?: PeerNgrokStatus;
 }
 
 interface DiagnosticResult {
@@ -25,6 +27,7 @@ export const ConnectionDiagnostics: React.FC<ConnectionDiagnosticsProps> = ({
   open,
   onClose,
   peerConnection,
+  ngrokStatus,
 }) => {
   const [results, setResults] = useState<DiagnosticResult[]>([]);
   const [running, setRunning] = useState(false);
@@ -130,9 +133,34 @@ export const ConnectionDiagnostics: React.FC<ConnectionDiagnosticsProps> = ({
       message: hasWebSocket ? 'Available' : 'Not available',
     });
 
+    if (ngrokStatus) {
+      let status: DiagnosticResult['status'] = 'warning';
+      let message = 'Tunnel not running';
+      let details: string | undefined;
+
+      if (ngrokStatus.status === 'online') {
+        status = 'success';
+        message = ngrokStatus.publicUrl ? `Online at ${ngrokStatus.publicUrl}` : 'Online';
+      } else if (ngrokStatus.status === 'starting' || ngrokStatus.status === 'stopping') {
+        status = 'warning';
+        message = `Tunnel ${ngrokStatus.status}`;
+      } else if (ngrokStatus.status === 'error') {
+        status = 'error';
+        message = 'Tunnel error';
+        details = ngrokStatus.error;
+      }
+
+      diagnostics.push({
+        name: 'Ngrok Tunnel',
+        status,
+        message,
+        details,
+      });
+    }
+
     setResults(diagnostics);
     setRunning(false);
-  }, [peerConnection]);
+  }, [peerConnection, ngrokStatus]);
 
   useEffect(() => {
     if (open) {

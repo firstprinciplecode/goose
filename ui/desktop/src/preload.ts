@@ -85,6 +85,20 @@ export interface PeerInvitePayload {
   hostBaseUrl?: string;
 }
 
+export interface PeerNgrokConfig {
+  binaryPath?: string;
+  authToken?: string;
+  autoStart?: boolean;
+  lastPublicUrl?: string;
+}
+
+export type PeerNgrokStatus = {
+  status: 'idle' | 'starting' | 'online' | 'stopping' | 'error';
+  publicUrl?: string;
+  error?: string;
+  pid?: number;
+};
+
 interface ExecuteCommandResult {
   stdout: string;
   stderr: string;
@@ -184,6 +198,14 @@ type ElectronAPI = {
     joinInvite: (request: PeerJoinInviteRequest) => Promise<PeerJoinInviteResponse>;
     getBaseUrl: () => Promise<string | null>;
     onInvite: (callback: (payload: PeerInvitePayload) => void) => () => void;
+    ngrok: {
+      loadConfig: () => Promise<PeerNgrokConfig>;
+      saveConfig: (config: Partial<PeerNgrokConfig>) => Promise<PeerNgrokConfig>;
+      getStatus: () => Promise<PeerNgrokStatus>;
+      start: (config?: Partial<PeerNgrokConfig>) => Promise<PeerNgrokStatus>;
+      stop: () => Promise<PeerNgrokStatus>;
+      onStatus: (callback: (status: PeerNgrokStatus) => void) => () => void;
+    };
   };
 };
 
@@ -334,6 +356,25 @@ const electronAPI: ElectronAPI = {
         callback(payload);
       ipcRenderer.on('peer-open-invite', listener);
       return () => ipcRenderer.removeListener('peer-open-invite', listener);
+    },
+    ngrok: {
+      loadConfig: () => ipcRenderer.invoke('peer-ngrok-load-config'),
+      saveConfig: (config: Partial<PeerNgrokConfig>) =>
+        ipcRenderer.invoke('peer-ngrok-save-config', config),
+      getStatus: () => ipcRenderer.invoke('peer-ngrok-status'),
+      start: (config?: Partial<PeerNgrokConfig>) =>
+        ipcRenderer.invoke('peer-ngrok-start', config ?? {}),
+      stop: () => ipcRenderer.invoke('peer-ngrok-stop'),
+      onStatus: (callback: (status: PeerNgrokStatus) => void) => {
+        const listener = (_event: Electron.IpcRendererEvent, status: PeerNgrokStatus) =>
+          callback(status);
+        ipcRenderer.on('peer-ngrok-status-updated', listener);
+        ipcRenderer.send('peer-ngrok-subscribe');
+        return () => {
+          ipcRenderer.off('peer-ngrok-status-updated', listener);
+          ipcRenderer.send('peer-ngrok-unsubscribe');
+        };
+      },
     },
   },
 };

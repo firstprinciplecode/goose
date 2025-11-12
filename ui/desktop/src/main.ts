@@ -52,6 +52,8 @@ import { Recipe } from './recipe';
 import './utils/recipeHash';
 import { Client, createClient, createConfig } from './api/client';
 // Note: electron-devtools-installer is imported dynamically in development only
+import { ngrokManager } from './ngrok';
+import { loadNgrokConfig, updateNgrokConfig, type NgrokStoredConfig } from './utils/ngrokConfig';
 
 // Updater functions (moved here to keep updates.ts minimal for release replacement)
 function shouldSetupUpdater(): boolean {
@@ -520,6 +522,28 @@ const getGooseBaseUrl = (contents: WebContents): string | null => {
   return client.getConfig().baseUrl || null;
 };
 
+const getPortFromBaseUrl = (baseUrl: string): number | null => {
+  try {
+    const parsed = new URL(baseUrl);
+    if (parsed.port) {
+      return Number(parsed.port);
+    }
+    if (parsed.protocol === 'https:') {
+      return 443;
+    }
+    if (parsed.protocol === 'http:') {
+      return 80;
+    }
+  } catch (error) {
+    const match = baseUrl.match(/:(\d+)/);
+    if (match && match[1]) {
+      return Number(match[1]);
+    }
+    log.warn('[Ngrok] Unable to parse goosed base URL for port', { baseUrl, error });
+  }
+  return null;
+};
+
 const buildGooseUrl = (baseUrl: string, pathSegment: string) => {
   try {
     return new URL(pathSegment, baseUrl).toString();
@@ -634,6 +658,10 @@ const createChat = async (
       buttons: ['OK'],
     });
     app.quit();
+  }
+
+  if (serverReady) {
+    void ngrokManager.maybeAutoStart(port);
   }
 
   // Let windowStateKeeper manage the window
@@ -1340,10 +1368,17 @@ ipcMain.handle(
     }
 
     const payloadShareBase = payload.shareBaseUrl?.trim();
-    const hostBase =
+    let hostBase =
       payloadShareBase && payloadShareBase.length > 0
         ? payloadShareBase
         : (deriveShareBaseUrl(baseUrl) ?? undefined);
+
+    if (!hostBase) {
+      const tunnelStatus = ngrokManager.getStatus();
+      if (tunnelStatus.status === 'online' && tunnelStatus.publicUrl) {
+        hostBase = tunnelStatus.publicUrl;
+      }
+    }
     const result = (await response.json()) as Record<string, unknown>;
 
     if (typeof result.invite_url === 'string' && hostBase) {
@@ -2551,6 +2586,47 @@ async function appMain() {
       console.error('Error opening directory in explorer:', error);
       return false;
     }
+  });
+
+  ipcMain.handle('peer-ngrok-load-config', async () => {
+    return loadNgrokConfig();
+  });
+
+  ipcMain.handle('peer-ngrok-save-config', async (_event, payload: Partial<NgrokStoredConfig>) => {
+    return updateNgrokConfig(payload ?? {});
+  });
+
+  ipcMain.handle('peer-ngrok-status', async () => {
+    return ngrokManager.getStatus();
+  });
+
+  ipcMain.handle(
+    'peer-ngrok-start',
+    async (event, payload: Partial<NgrokStoredConfig> | undefined) => {
+      const baseUrl = getGooseBaseUrl(event.sender);
+      if (!baseUrl) {
+        throw new Error('Goose server is not ready');
+      }
+
+      const port = getPortFromBaseUrl(baseUrl);
+      if (!port) {
+        throw new Error('Unable to determine Goose server port');
+      }
+
+      return ngrokManager.start({ port, overrides: payload ?? undefined });
+    }
+  );
+
+  ipcMain.handle('peer-ngrok-stop', async () => {
+    return ngrokManager.stop();
+  });
+
+  ipcMain.on('peer-ngrok-subscribe', (event) => {
+    ngrokManager.registerSubscriber(event.sender);
+  });
+
+  ipcMain.on('peer-ngrok-unsubscribe', (event) => {
+    ngrokManager.unregisterSubscriber(event.sender);
   });
 }
 

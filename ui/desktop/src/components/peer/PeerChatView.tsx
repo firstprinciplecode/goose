@@ -26,6 +26,7 @@ import {
   type PeerSettings,
 } from '../../peer/settings';
 import { generateFingerprint } from '../../peer/fingerprint';
+import type { PeerNgrokConfig, PeerNgrokStatus } from '../../preload';
 
 type FormElement = globalThis.HTMLFormElement;
 
@@ -95,6 +96,8 @@ export const PeerChatView: React.FC = () => {
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [peerSettings, setPeerSettings] = useState<PeerSettings>(() => loadPeerSettings());
   const [fingerprintAutoTrusted, setFingerprintAutoTrusted] = useState(false);
+  const [ngrokConfig, setNgrokConfig] = useState<PeerNgrokConfig | null>(null);
+  const [ngrokStatus, setNgrokStatus] = useState<PeerNgrokStatus>({ status: 'idle' });
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -121,6 +124,8 @@ export const PeerChatView: React.FC = () => {
 
   useEffect(() => {
     let mounted = true;
+    let unsubscribe: (() => void) | undefined;
+
     window.electron.peer
       .getBaseUrl()
       .then((url) => {
@@ -129,8 +134,35 @@ export const PeerChatView: React.FC = () => {
         }
       })
       .catch((error) => console.error('Failed to fetch peer base URL', error));
+
+    (async () => {
+      try {
+        const [config, status] = await Promise.all([
+          window.electron.peer.ngrok.loadConfig(),
+          window.electron.peer.ngrok.getStatus(),
+        ]);
+        if (mounted) {
+          setNgrokConfig(config);
+          setNgrokStatus(status);
+        }
+      } catch (error) {
+        console.error('Failed to initialize ngrok configuration', error);
+      }
+
+      try {
+        unsubscribe = window.electron.peer.ngrok.onStatus((nextStatus) => {
+          if (mounted) {
+            setNgrokStatus(nextStatus);
+          }
+        });
+      } catch (error) {
+        console.error('Failed to subscribe to ngrok status updates', error);
+      }
+    })();
+
     return () => {
       mounted = false;
+      unsubscribe?.();
     };
   }, []);
 
@@ -292,7 +324,10 @@ export const PeerChatView: React.FC = () => {
       if (!url) {
         throw new Error('Goose server unavailable');
       }
-      const shareBase = resolveShareBaseUrl();
+      const shareBasePreference = resolveShareBaseUrl();
+      const tunnelBaseUrl =
+        ngrokStatus.status === 'online' && ngrokStatus.publicUrl ? ngrokStatus.publicUrl : null;
+      const shareBase = shareBasePreference ?? tunnelBaseUrl ?? null;
       const response = await window.electron.peer.createInvite({
         deviceId: identity.deviceId,
         deviceName: identity.deviceName,
@@ -432,6 +467,36 @@ export const PeerChatView: React.FC = () => {
     setPeerSettings(settings);
   };
 
+  const handleSaveNgrokConfig = async (config: Partial<PeerNgrokConfig>) => {
+    try {
+      const next = await window.electron.peer.ngrok.saveConfig(config);
+      setNgrokConfig(next);
+    } catch (error) {
+      console.error('Failed to save ngrok configuration', error);
+      throw error;
+    }
+  };
+
+  const handleStartNgrok = async () => {
+    try {
+      const status = await window.electron.peer.ngrok.start(ngrokConfig ?? {});
+      setNgrokStatus(status);
+    } catch (error) {
+      console.error('Failed to start ngrok tunnel', error);
+      throw error;
+    }
+  };
+
+  const handleStopNgrok = async () => {
+    try {
+      const status = await window.electron.peer.ngrok.stop();
+      setNgrokStatus(status);
+    } catch (error) {
+      console.error('Failed to stop ngrok tunnel', error);
+      throw error;
+    }
+  };
+
   const handleTrustPeer = () => {
     if (peer) {
       setContactTrusted(peer.deviceId, true);
@@ -475,6 +540,11 @@ export const PeerChatView: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         settings={peerSettings}
         onSave={handleSaveSettings}
+        ngrokConfig={ngrokConfig}
+        ngrokStatus={ngrokStatus}
+        onSaveNgrok={handleSaveNgrokConfig}
+        onStartNgrok={handleStartNgrok}
+        onStopNgrok={handleStopNgrok}
       />
 
       {peer && (
@@ -488,7 +558,11 @@ export const PeerChatView: React.FC = () => {
         />
       )}
 
-      <ConnectionDiagnostics open={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} />
+      <ConnectionDiagnostics
+        open={isDiagnosticsOpen}
+        onClose={() => setIsDiagnosticsOpen(false)}
+        ngrokStatus={ngrokStatus}
+      />
 
       <div className="flex h-full bg-background-default text-text-default">
         {/* Sidebar - Contacts */}
