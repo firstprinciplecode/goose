@@ -14,6 +14,7 @@ import {
   session,
   shell,
   Tray,
+  type WebContents,
 } from 'electron';
 import { pathToFileURL, format as formatUrl, URLSearchParams } from 'node:url';
 import { Buffer } from 'node:buffer';
@@ -50,7 +51,7 @@ import { UPDATES_ENABLED } from './updates';
 import { Recipe } from './recipe';
 import './utils/recipeHash';
 import { Client, createClient, createConfig } from './api/client';
-import installExtension, { REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
+// Note: electron-devtools-installer is imported dynamically in development only
 
 // Updater functions (moved here to keep updates.ts minimal for release replacement)
 function shouldSetupUpdater(): boolean {
@@ -228,6 +229,14 @@ if (process.platform !== 'darwin') {
 let firstOpenWindow: BrowserWindow;
 let pendingDeepLink: string | null = null;
 
+type PeerInvitePayload = {
+  roomId: string;
+  token?: string;
+  hostToken?: string;
+  inviterName?: string;
+  inviterDeviceId?: string;
+};
+
 async function handleProtocolUrl(url: string) {
   if (!url) return;
 
@@ -279,6 +288,13 @@ async function processProtocolUrl(parsedUrl: URL, window: BrowserWindow) {
     window.webContents.send('add-extension', pendingDeepLink);
   } else if (parsedUrl.hostname === 'sessions') {
     window.webContents.send('open-shared-session', pendingDeepLink);
+  } else if (parsedUrl.hostname === 'peer') {
+    const invite = extractPeerInvite(parsedUrl);
+    if (invite) {
+      window.webContents.send('peer-open-invite', invite);
+    } else {
+      console.warn('[Main] Ignoring goose://peer link with missing params');
+    }
   } else if (parsedUrl.hostname === 'bot' || parsedUrl.hostname === 'recipe') {
     const recipeDeeplink = parsedUrl.searchParams.get('config');
     const scheduledJobId = parsedUrl.searchParams.get('scheduledJob');
@@ -345,10 +361,14 @@ app.on('open-url', async (_event, url) => {
       firstOpenWindow = await createChat(app, undefined, openDir || undefined);
     }
 
-    if (parsedUrl.hostname === 'extension') {
-      firstOpenWindow.webContents.send('add-extension', pendingDeepLink);
-    } else if (parsedUrl.hostname === 'sessions') {
-      firstOpenWindow.webContents.send('open-shared-session', pendingDeepLink);
+    const dispatchDeepLink = async () => {
+      await processProtocolUrl(parsedUrl, firstOpenWindow);
+    };
+
+    if (firstOpenWindow.webContents.isLoadingMainFrame()) {
+      firstOpenWindow.webContents.once('did-finish-load', dispatchDeepLink);
+    } else {
+      await dispatchDeepLink();
     }
     pendingDeepLink = null;
   }
@@ -483,6 +503,31 @@ let appConfig = {
 const windowMap = new Map<number, BrowserWindow>();
 const goosedClients = new Map<number, Client>();
 
+const getGoosedClientForWebContents = (contents: WebContents) => {
+  const windowId = BrowserWindow.fromWebContents(contents)?.id;
+  if (!windowId) {
+    return null;
+  }
+  return goosedClients.get(windowId) ?? null;
+};
+
+const getGooseBaseUrl = (contents: WebContents): string | null => {
+  const client = getGoosedClientForWebContents(contents);
+  if (!client) {
+    return null;
+  }
+  return client.getConfig().baseUrl || null;
+};
+
+const buildGooseUrl = (baseUrl: string, pathSegment: string) => {
+  try {
+    return new URL(pathSegment, baseUrl).toString();
+  } catch {
+    const trimmed = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    return `${trimmed}${pathSegment.startsWith('/') ? pathSegment : `/${pathSegment}`}`;
+  }
+};
+
 // Track power save blockers per window
 const windowPowerSaveBlockers = new Map<number, number>(); // windowId -> blockerId
 // Track pending initial messages per window
@@ -555,10 +600,14 @@ const createChat = async (
   });
 
   if (!app.isPackaged) {
-    installExtension(REACT_DEVELOPER_TOOLS, {
-      loadExtensionOptions: { allowFileAccess: true },
-      session: mainWindow.webContents.session,
-    })
+    // Dynamically import devtools installer only in development
+    import('electron-devtools-installer')
+      .then(({ default: installExtension, REACT_DEVELOPER_TOOLS }) =>
+        installExtension(REACT_DEVELOPER_TOOLS, {
+          loadExtensionOptions: { allowFileAccess: true },
+          session: mainWindow.webContents.session,
+        })
+      )
       .then(() => log.info('added react dev tools'))
       .catch((err) => log.info('failed to install react dev tools:', err));
   }
@@ -1060,6 +1109,26 @@ function parseRecipeDeeplink(url: string): string | undefined {
   return undefined;
 }
 
+function extractPeerInvite(parsedUrl: URL): PeerInvitePayload | null {
+  const roomId = parsedUrl.searchParams.get('room');
+  if (!roomId) {
+    return null;
+  }
+
+  const token = parsedUrl.searchParams.get('token') ?? undefined;
+  const hostToken = parsedUrl.searchParams.get('hostToken') ?? undefined;
+  const inviterName = parsedUrl.searchParams.get('from') ?? undefined;
+  const inviterDeviceId = parsedUrl.searchParams.get('device') ?? undefined;
+
+  return {
+    roomId,
+    token,
+    hostToken,
+    inviterName,
+    inviterDeviceId,
+  };
+}
+
 // Global error handler
 const handleFatalError = (error: Error) => {
   const windows = BrowserWindow.getAllWindows();
@@ -1114,6 +1183,74 @@ ipcMain.handle('open-external', async (_event, url: string) => {
   }
 });
 
+ipcMain.handle(
+  'execute-command',
+  async (
+    _event,
+    command: string,
+    cwd?: string
+  ): Promise<{
+    stdout: string;
+    stderr: string;
+    success: boolean;
+  }> => {
+    const trimmed = command?.trim();
+    if (!trimmed) {
+      return { stdout: '', stderr: '', success: true };
+    }
+
+    const workingDir = cwd && cwd.length > 0 ? cwd : process.cwd();
+
+    return await new Promise((resolve) => {
+      try {
+        const child = spawn(trimmed, {
+          cwd: workingDir,
+          shell: true,
+          env: { ...process.env },
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        child.stdout?.on('data', (data) => {
+          stdout += data.toString();
+        });
+
+        child.stderr?.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        child.on('error', (error) => {
+          resolve({
+            stdout,
+            stderr: `${stderr}${stderr ? '\n' : ''}${error.message}`,
+            success: false,
+          });
+        });
+
+        child.on('close', (code) => {
+          resolve({
+            stdout,
+            stderr,
+            success: code === 0,
+          });
+        });
+      } catch (error: unknown) {
+        resolve({
+          stdout: '',
+          stderr:
+            error instanceof Error
+              ? error.message
+              : typeof error === 'object' && error !== null && 'message' in error
+                ? String((error as { message?: unknown }).message)
+                : 'Command failed',
+          success: false,
+        });
+      }
+    });
+  }
+);
+
 // Handle directory chooser
 ipcMain.handle('directory-chooser', (_event) => {
   return openDirectoryDialog();
@@ -1144,6 +1281,83 @@ ipcMain.handle('get-goosed-host-port', async (event) => {
   }
   return client.getConfig().baseUrl || null;
 });
+
+ipcMain.handle('peer-get-base-url', async (event) => {
+  return getGooseBaseUrl(event.sender);
+});
+
+ipcMain.handle(
+  'peer-create-invite',
+  async (event, payload: { deviceId: string; deviceName: string; publicKey?: string }) => {
+    const baseUrl = getGooseBaseUrl(event.sender);
+    if (!baseUrl) {
+      throw new Error('Goose server is not ready');
+    }
+
+    const url = buildGooseUrl(baseUrl, '/peer/invite');
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Secret-Key': SERVER_SECRET,
+      },
+      body: JSON.stringify({
+        device_id: payload.deviceId,
+        device_name: payload.deviceName,
+        public_key: payload.publicKey,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to create invite (${response.status}): ${errorText}`);
+    }
+
+    return response.json();
+  }
+);
+
+ipcMain.handle(
+  'peer-join-invite',
+  async (
+    event,
+    payload: {
+      roomId: string;
+      inviteToken: string;
+      deviceId: string;
+      deviceName: string;
+      publicKey?: string;
+    }
+  ) => {
+    const baseUrl = getGooseBaseUrl(event.sender);
+    if (!baseUrl) {
+      throw new Error('Goose server is not ready');
+    }
+
+    const url = buildGooseUrl(baseUrl, '/peer/join');
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Secret-Key': SERVER_SECRET,
+      },
+      body: JSON.stringify({
+        room_id: payload.roomId,
+        invite_token: payload.inviteToken,
+        device_id: payload.deviceId,
+        device_name: payload.deviceName,
+        public_key: payload.publicKey,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to join invite (${response.status}): ${errorText}`);
+    }
+
+    return response.json();
+  }
+);
 
 // Handle menu bar icon visibility
 ipcMain.handle('set-menu-bar-icon', async (_event, show: boolean) => {

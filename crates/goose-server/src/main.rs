@@ -5,6 +5,7 @@ mod logging;
 mod openapi;
 mod routes;
 mod state;
+mod webrtc;
 
 use clap::{Parser, Subcommand};
 

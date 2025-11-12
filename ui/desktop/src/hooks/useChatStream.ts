@@ -1,3 +1,4 @@
+/* eslint-env browser */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatState } from '../types/chatState';
 
@@ -83,6 +84,57 @@ function pushMessage(currentMessages: Message[], incomingMsg: Message): Message[
     return [...currentMessages];
   } else {
     return [...currentMessages, incomingMsg];
+  }
+}
+
+async function* messageEventsFromResponse(response: Response): AsyncIterable<MessageEvent> {
+  if (!response.body) {
+    throw new Error('Response body is empty');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new globalThis.TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary !== -1) {
+        const rawEvent = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+
+        const dataLines = rawEvent
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trim());
+
+        const payload = dataLines.join('\n').trim();
+        if (payload) {
+          yield JSON.parse(payload) as MessageEvent;
+        }
+
+        boundary = buffer.indexOf('\n\n');
+      }
+    }
+
+    const trailingData = buffer
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .join('\n')
+      .trim();
+
+    if (trailingData) {
+      yield JSON.parse(trailingData) as MessageEvent;
+    }
+  } finally {
+    reader.releaseLock();
   }
 }
 
@@ -288,19 +340,20 @@ export function useChatStream({
       try {
         log.stream('request-start', { sessionId: sessionId.slice(0, 8) });
 
-        const { stream } = await reply({
+        const { response } = await reply({
           body: {
             session_id: sessionId,
             messages: currentMessages,
           },
           throwOnError: true,
           signal: abortControllerRef.current.signal,
+          parseAs: 'stream',
         });
 
         log.stream('stream-started');
 
         await streamFromResponse(
-          stream,
+          messageEventsFromResponse(response),
           currentMessages,
           (messages: Message[]) => setMessagesAndLog(messages, 'streaming'),
           setTokenState,

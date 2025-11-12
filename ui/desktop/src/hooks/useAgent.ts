@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useConfig } from '../components/ConfigContext';
 import { ChatType } from '../types/chat';
 import { initializeSystem } from '../utils/providerUtils';
+import { errorMessage } from '../utils/conversionUtils';
 import { initializeCostDatabase } from '../utils/costDatabase';
 import {
   backupConfig,
@@ -266,14 +267,11 @@ export function useAgent(): UseAgentReturn {
             error instanceof NoProviderOrModelError
           ) {
             setAgentState(AgentState.NO_PROVIDER);
-            throw error;
+            throw new NoProviderOrModelError();
           }
           setAgentState(AgentState.ERROR);
-          if (typeof error === 'object' && error !== null && 'message' in error) {
-            let error_message = error.message as string;
-            throw new Error(error_message);
-          }
-          throw error;
+          // Normalize any unknown error into a readable message
+          throw new Error(errorMessage(error));
         } finally {
           agentWaitingMessage(null);
           initPromiseRef.current = null;

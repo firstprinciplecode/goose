@@ -45,6 +45,7 @@ import {
 } from './hooks/useAgent';
 import { useNavigation } from './hooks/useNavigation';
 import Pair2 from './components/Pair2';
+import PeerChatView from './components/peer/PeerChatView';
 
 // Route Components
 const HubRouteWrapper = ({
@@ -651,6 +652,7 @@ export function AppInner() {
                 />
               }
             />
+            <Route path="peer" element={<PeerChatView />} />
             <Route path="settings" element={<SettingsRoute />} />
             <Route
               path="extensions"

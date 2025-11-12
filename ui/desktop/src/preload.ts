@@ -33,6 +33,59 @@ interface SaveDataUrlResponse {
   error?: string;
 }
 
+export interface DirectoryEntry {
+  name: string;
+  isDirectory: boolean;
+  isFile: boolean;
+}
+
+interface PeerCreateInviteRequest {
+  deviceId: string;
+  deviceName: string;
+  publicKey?: string;
+}
+
+interface PeerCreateInviteResponse {
+  room_id: string;
+  host_token: string;
+  invite_token: string;
+  invite_url: string;
+  expires_at: string;
+}
+
+interface PeerJoinInviteRequest {
+  roomId: string;
+  inviteToken: string;
+  deviceId: string;
+  deviceName: string;
+  publicKey?: string;
+}
+
+interface PeerJoinInviteResponse {
+  room_id: string;
+  ws_token: string;
+  host: {
+    device_id: string;
+    device_name: string;
+    public_key?: string | null;
+  };
+  expires_at: string;
+}
+
+export interface PeerInvitePayload {
+  roomId: string;
+  token?: string;
+  hostToken?: string;
+  inviterName?: string;
+  inviterDeviceId?: string;
+}
+
+interface ExecuteCommandResult {
+  stdout: string;
+  stderr: string;
+  success: boolean;
+}
+
 const config = JSON.parse(process.argv.find((arg) => arg.startsWith('{')) || '{}');
 
 interface UpdaterEvent {
@@ -71,6 +124,7 @@ type ElectronAPI = {
   writeFile: (directory: string, content: string) => Promise<boolean>;
   ensureDirectory: (dirPath: string) => Promise<boolean>;
   listFiles: (dirPath: string, extension?: string) => Promise<string[]>;
+  readDirectoryStructure: (dirPath: string) => Promise<DirectoryEntry[]>;
   getAllowedExtensions: () => Promise<string[]>;
   getPathForFile: (file: File) => string;
   setMenuBarIcon: (show: boolean) => Promise<boolean>;
@@ -85,6 +139,7 @@ type ElectronAPI = {
   openNotificationsSettings: () => Promise<boolean>;
   onMouseBackButtonClicked: (callback: () => void) => void;
   offMouseBackButtonClicked: (callback: () => void) => void;
+  executeCommand: (command: string, cwd: string) => Promise<ExecuteCommandResult>;
   on: (
     channel: string,
     callback: (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
@@ -119,6 +174,12 @@ type ElectronAPI = {
   hasAcceptedRecipeBefore: (recipe: Recipe) => Promise<boolean>;
   recordRecipeHash: (recipe: Recipe) => Promise<boolean>;
   openDirectoryInExplorer: (directoryPath: string) => Promise<boolean>;
+  peer: {
+    createInvite: (request: PeerCreateInviteRequest) => Promise<PeerCreateInviteResponse>;
+    joinInvite: (request: PeerJoinInviteRequest) => Promise<PeerJoinInviteResponse>;
+    getBaseUrl: () => Promise<string | null>;
+    onInvite: (callback: (payload: PeerInvitePayload) => void) => () => void;
+  };
 };
 
 type AppConfigAPI = {
@@ -176,6 +237,8 @@ const electronAPI: ElectronAPI = {
   ensureDirectory: (dirPath: string) => ipcRenderer.invoke('ensure-directory', dirPath),
   listFiles: (dirPath: string, extension?: string) =>
     ipcRenderer.invoke('list-files', dirPath, extension),
+  readDirectoryStructure: (dirPath: string) =>
+    ipcRenderer.invoke('read-directory-structure', dirPath),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getAllowedExtensions: () => ipcRenderer.invoke('get-allowed-extensions'),
   setMenuBarIcon: (show: boolean) => ipcRenderer.invoke('set-menu-bar-icon', show),
@@ -188,6 +251,8 @@ const electronAPI: ElectronAPI = {
   setWakelock: (enable: boolean) => ipcRenderer.invoke('set-wakelock', enable),
   getWakelockState: () => ipcRenderer.invoke('get-wakelock-state'),
   openNotificationsSettings: () => ipcRenderer.invoke('open-notifications-settings'),
+  executeCommand: (command: string, cwd: string) =>
+    ipcRenderer.invoke('execute-command', command, cwd),
   onMouseBackButtonClicked: (callback: () => void) => {
     // Wrapper that ignores the event parameter.
     const wrappedCallback = (_event: Electron.IpcRendererEvent) => callback();
@@ -254,6 +319,18 @@ const electronAPI: ElectronAPI = {
   recordRecipeHash: (recipe: Recipe) => ipcRenderer.invoke('record-recipe-hash', recipe),
   openDirectoryInExplorer: (directoryPath: string) =>
     ipcRenderer.invoke('open-directory-in-explorer', directoryPath),
+  peer: {
+    createInvite: (request: PeerCreateInviteRequest) =>
+      ipcRenderer.invoke('peer-create-invite', request),
+    joinInvite: (request: PeerJoinInviteRequest) => ipcRenderer.invoke('peer-join-invite', request),
+    getBaseUrl: () => ipcRenderer.invoke('peer-get-base-url'),
+    onInvite: (callback: (payload: PeerInvitePayload) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: PeerInvitePayload) =>
+        callback(payload);
+      ipcRenderer.on('peer-open-invite', listener);
+      return () => ipcRenderer.removeListener('peer-open-invite', listener);
+    },
+  },
 };
 
 const appConfigAPI: AppConfigAPI = {

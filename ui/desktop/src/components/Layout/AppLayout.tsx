@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import AppSidebar from '../GooseSidebar/AppSidebar';
 import { View, ViewOptions } from '../../utils/navigationUtils';
-import { AppWindowMac, AppWindow } from 'lucide-react';
+import { AppWindowMac, AppWindow, UsersRound } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Sidebar, SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../ui/sidebar';
 
@@ -77,6 +77,10 @@ const AppLayoutContent: React.FC<AppLayoutProps> = ({ setIsGoosehintsModalOpen }
     );
   };
 
+  const handleOpenPeer = () => {
+    navigate('/peer');
+  };
+
   return (
     <div className="flex flex-1 w-full relative animate-fade-in">
       {!shouldHideButtons && (
@@ -92,6 +96,15 @@ const AppLayoutContent: React.FC<AppLayoutProps> = ({ setIsGoosehintsModalOpen }
             title="Start a new session in a new window"
           >
             {safeIsMacOS ? <AppWindowMac className="w-4 h-4" /> : <AppWindow className="w-4 h-4" />}
+          </Button>
+          <Button
+            onClick={handleOpenPeer}
+            className="no-drag hover:!bg-background-medium"
+            variant="ghost"
+            size="xs"
+            title="Open Peer Chat"
+          >
+            <UsersRound className="w-4 h-4" />
           </Button>
         </div>
       )}
