@@ -1,6 +1,7 @@
 /* eslint-env browser */
 /* eslint-disable no-undef */
 import type { PeerInvitePayload } from '../preload';
+import { loadSettings, getIceServers } from './settings';
 
 export interface PeerIdentity {
   deviceId: string;
@@ -158,12 +159,16 @@ export class GoosePeerClient {
       return;
     }
 
-    const rtc = new RTCPeerConnection({
-      iceServers:
-        this.options.iceServers && this.options.iceServers.length > 0
-          ? this.options.iceServers
-          : DEFAULT_ICE,
-    });
+    // Use provided ICE servers, or load from settings, or fall back to defaults
+    let iceServers: RTCIceServer[] = DEFAULT_ICE;
+    if (this.options.iceServers && this.options.iceServers.length > 0) {
+      iceServers = this.options.iceServers;
+    } else {
+      const settings = loadSettings();
+      iceServers = getIceServers(settings);
+    }
+
+    const rtc = new RTCPeerConnection({ iceServers });
 
     rtc.onconnectionstatechange = () => {
       this.emit('state', rtc.connectionState);

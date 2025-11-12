@@ -3,6 +3,8 @@ export interface PeerContact {
   deviceName: string;
   publicKey?: string | null;
   lastSeenAt: number;
+  fingerprint?: string;
+  trusted?: boolean;
 }
 
 const STORAGE_KEY = 'goose-peer-contacts';
@@ -43,9 +45,20 @@ export function upsertContact(contact: Omit<PeerContact, 'lastSeenAt'> & { lastS
     deviceName: contact.deviceName,
     publicKey: contact.publicKey ?? existing?.publicKey ?? null,
     lastSeenAt: contact.lastSeenAt ?? Date.now(),
+    fingerprint: contact.fingerprint ?? existing?.fingerprint,
+    trusted: contact.trusted ?? existing?.trusted ?? false,
   };
   store[contact.deviceId] = payload;
   writeStore(store);
+}
+
+export function setContactTrusted(deviceId: string, trusted: boolean) {
+  const store = readStore();
+  const existing = store[deviceId];
+  if (existing) {
+    existing.trusted = trusted;
+    writeStore(store);
+  }
 }
 
 export function removeContact(deviceId: string) {

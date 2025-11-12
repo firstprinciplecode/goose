@@ -4,11 +4,28 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
-import { Loader2, Send, UsersRound, ShieldCheck, Plus } from 'lucide-react';
+import { Loader2, Send, UsersRound, ShieldCheck, Plus, Settings, Activity } from 'lucide-react';
 import { InviteModal } from './InviteModal';
+import { PeerSettingsModal } from './PeerSettingsModal';
+import { FingerprintVerifyModal } from './FingerprintVerifyModal';
+import { ConnectionDiagnostics } from './ConnectionDiagnostics';
 import { createPeerClient, GoosePeerClient, PeerIdentity } from '../../peer/webrtcClient';
-import { listContacts, PeerContact, removeContact, upsertContact } from '../../peer/contacts';
+import {
+  listContacts,
+  PeerContact,
+  removeContact,
+  upsertContact,
+  setContactTrusted,
+  getContact,
+} from '../../peer/contacts';
 import { loadIdentity } from '../../peer/identity';
+import {
+  loadPeerSettings,
+  savePeerSettings,
+  buildIceServers,
+  type PeerSettings,
+} from '../../peer/settings';
+import { generateFingerprint } from '../../peer/fingerprint';
 
 type FormElement = globalThis.HTMLFormElement;
 
@@ -73,6 +90,11 @@ export const PeerChatView: React.FC = () => {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isFingerprintModalOpen, setIsFingerprintModalOpen] = useState(false);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [peerSettings, setPeerSettings] = useState<PeerSettings>(() => loadPeerSettings());
+  const [fingerprintAutoTrusted, setFingerprintAutoTrusted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -167,16 +189,26 @@ export const PeerChatView: React.FC = () => {
   };
 
   const attachClient = (nextClient: GoosePeerClient) => {
-    nextClient.on('peerInfo', (info) => {
+    nextClient.on('peerInfo', async (info) => {
       setPeer(info);
       if (info) {
+        const fingerprint = generateFingerprint(info.publicKey ?? '');
+        const existing = getContact(info.deviceId);
+        const isTrusted = existing?.trusted ?? false;
+
         upsertContact({
           deviceId: info.deviceId,
           deviceName: info.deviceName,
           publicKey: info.publicKey,
+          fingerprint,
+          trusted: isTrusted,
         });
         setContacts(listContacts());
         setCurrentContactId(info.deviceId);
+
+        // Show fingerprint verification modal
+        setFingerprintAutoTrusted(isTrusted);
+        setIsFingerprintModalOpen(true);
       }
     });
 
@@ -286,6 +318,7 @@ export const PeerChatView: React.FC = () => {
         roomId: response.room_id,
         wsToken: response.host_token,
         signalingBaseUrl: url,
+        iceServers: buildIceServers(peerSettings),
       });
       attachClient(clientInstance);
     } catch (error) {
@@ -334,6 +367,7 @@ export const PeerChatView: React.FC = () => {
         roomId: response.room_id,
         wsToken: response.ws_token,
         signalingBaseUrl: signalingBase,
+        iceServers: buildIceServers(peerSettings),
       });
       attachClient(clientInstance);
       setPendingInvite(null);
@@ -393,6 +427,29 @@ export const PeerChatView: React.FC = () => {
     }
   };
 
+  const handleSaveSettings = (settings: PeerSettings) => {
+    savePeerSettings(settings);
+    setPeerSettings(settings);
+  };
+
+  const handleTrustPeer = () => {
+    if (peer) {
+      setContactTrusted(peer.deviceId, true);
+      setContacts(listContacts());
+    }
+  };
+
+  const handleRejectPeer = () => {
+    if (peer) {
+      setContactTrusted(peer.deviceId, false);
+      removeContact(peer.deviceId);
+      setContacts(listContacts());
+      client?.close();
+      resetSession();
+      setStatusMessage('Connection rejected');
+    }
+  };
+
   return (
     <>
       <InviteModal
@@ -410,6 +467,26 @@ export const PeerChatView: React.FC = () => {
         isJoining={status === 'connecting'}
       />
 
+      <PeerSettingsModal
+        open={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={peerSettings}
+        onSave={handleSaveSettings}
+      />
+
+      {peer && (
+        <FingerprintVerifyModal
+          open={isFingerprintModalOpen}
+          onClose={() => setIsFingerprintModalOpen(false)}
+          peer={peer}
+          onTrust={handleTrustPeer}
+          onReject={handleRejectPeer}
+          autoTrusted={fingerprintAutoTrusted}
+        />
+      )}
+
+      <ConnectionDiagnostics open={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} />
+
       <div className="flex h-full bg-background-default text-text-default">
         {/* Sidebar - Contacts */}
         <aside className="w-64 border-r border-border-subtle flex flex-col">
@@ -418,14 +495,35 @@ export const PeerChatView: React.FC = () => {
               <UsersRound className="w-4 h-4" />
               Contacts
             </h2>
-            <Button
-              onClick={() => setIsModalOpen(true)}
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0"
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                onClick={() => setIsDiagnosticsOpen(true)}
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Connection Diagnostics"
+              >
+                <Activity className="w-4 h-4" />
+              </Button>
+              <Button
+                onClick={() => setIsSettingsOpen(true)}
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Peer Chat Settings"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
+              <Button
+                onClick={() => setIsModalOpen(true)}
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Create or Join Invite"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
 
           <ScrollArea className="flex-1">
