@@ -436,6 +436,8 @@ export const PeerChatView: React.FC = () => {
     if (peer) {
       setContactTrusted(peer.deviceId, true);
       setContacts(listContacts());
+      setFingerprintAutoTrusted(true);
+      setIsFingerprintModalOpen(false);
     }
   };
 
@@ -447,6 +449,7 @@ export const PeerChatView: React.FC = () => {
       client?.close();
       resetSession();
       setStatusMessage('Connection rejected');
+      setIsFingerprintModalOpen(false);
     }
   };
 
