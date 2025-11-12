@@ -2,22 +2,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
-import {
-  Loader2,
-  Send,
-  UsersRound,
-  Link2,
-  Download,
-  UserPlus,
-  Plug,
-  ShieldCheck,
-} from 'lucide-react';
+import { Loader2, Send, UsersRound, ShieldCheck, Plus } from 'lucide-react';
+import { InviteModal } from './InviteModal';
 import { createPeerClient, GoosePeerClient, PeerIdentity } from '../../peer/webrtcClient';
 import { listContacts, PeerContact, removeContact, upsertContact } from '../../peer/contacts';
-import { loadIdentity, updateDeviceName } from '../../peer/identity';
+import { loadIdentity } from '../../peer/identity';
 
 type FormElement = globalThis.HTMLFormElement;
 
@@ -65,8 +56,7 @@ function parseInvite(input: string): { roomId: string; token: string; baseUrl?: 
 }
 
 export const PeerChatView: React.FC = () => {
-  const [identity, setIdentity] = useState(() => loadIdentity());
-  const [selfNameDraft, setSelfNameDraft] = useState(identity.deviceName);
+  const [identity] = useState(() => loadIdentity());
   const [contacts, setContacts] = useState<PeerContact[]>(() => listContacts());
   const [currentContactId, setCurrentContactId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -81,8 +71,8 @@ export const PeerChatView: React.FC = () => {
   const [client, setClient] = useState<GoosePeerClient | null>(null);
   const [peer, setPeer] = useState<PeerIdentity | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [joinInput, setJoinInput] = useState('');
   const [baseUrl, setBaseUrl] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -388,11 +378,6 @@ export const PeerChatView: React.FC = () => {
     event.currentTarget.reset();
   };
 
-  const handleSaveName = () => {
-    const updated = updateDeviceName(selfNameDraft);
-    setIdentity(updated);
-  };
-
   const handleSelectContact = (contact: PeerContact) => {
     setCurrentContactId(contact.deviceId);
     setPendingInvite(null);
@@ -409,214 +394,208 @@ export const PeerChatView: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full bg-background-default text-text-default">
-      <aside className="w-72 border-r border-border-subtle flex flex-col">
-        <div className="p-4 border-b border-border-subtle space-y-3">
-          <div>
+    <>
+      <InviteModal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onCreateInvite={async () => {
+          await handleCreateInvite();
+        }}
+        onJoinInvite={async (input) => {
+          await handleJoinInvite(input);
+          setIsModalOpen(false);
+        }}
+        inviteLink={inviteLink}
+        isCreating={status === 'connecting' && !inviteLink}
+        isJoining={status === 'connecting'}
+      />
+
+      <div className="flex h-full bg-background-default text-text-default">
+        {/* Sidebar - Contacts */}
+        <aside className="w-64 border-r border-border-subtle flex flex-col">
+          <div className="p-4 flex items-center justify-between border-b border-border-subtle">
             <h2 className="text-sm font-semibold flex items-center gap-2">
               <UsersRound className="w-4 h-4" />
-              Known Contacts
+              Contacts
             </h2>
-            <p className="text-xs text-text-muted">Saved peers appear here after you connect.</p>
+            <Button
+              onClick={() => setIsModalOpen(true)}
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
           </div>
-          <ScrollArea className="h-48">
-            <ul className="space-y-2 pr-2">
+
+          <ScrollArea className="flex-1">
+            <div className="p-3 space-y-1">
               {contacts.length === 0 && (
-                <li className="text-xs text-text-muted">No contacts yet.</li>
+                <div className="text-xs text-text-muted text-center py-8">
+                  <p>No contacts yet.</p>
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="mt-2 text-primary hover:underline"
+                  >
+                    Create or join an invite
+                  </button>
+                </div>
               )}
               {contacts.map((contact) => (
-                <li key={contact.deviceId}>
-                  <div
-                    onClick={() => handleSelectContact(contact)}
-                    className={`w-full text-left text-sm px-2 py-1 rounded border transition-colors cursor-pointer ${
-                      currentContactId === contact.deviceId
-                        ? 'border-primary/40 bg-primary/10'
-                        : 'border-transparent hover:border-border-subtle hover:bg-background-medium'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center">
-                      <span>{contact.deviceName}</span>
-                      <button
-                        type="button"
-                        className="text-[11px] text-text-muted hover:text-destructive"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleForgetContact(contact.deviceId);
-                        }}
-                      >
-                        Forget
-                      </button>
-                    </div>
-                    <div className="text-[11px] text-text-muted mt-1">
-                      Seen {new Date(contact.lastSeenAt).toLocaleString()}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </ScrollArea>
-        </div>
-
-        <div className="p-4 border-t border-border-subtle space-y-2">
-          <div className="flex items-center gap-2 text-xs text-text-muted">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Peer chats use end-to-end encrypted WebRTC channels.
-          </div>
-        </div>
-      </aside>
-
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-          <div>
-            <h1 className="text-base font-semibold flex items-center gap-2">
-              <Plug className="w-5 h-5" />
-              Peer Chat
-            </h1>
-            <p className="text-xs text-text-muted">
-              Share invites with other Goose desktops to collaborate in real time.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {connectionBadge}
-            {statusMessage && <span className="text-xs text-text-muted">{statusMessage}</span>}
-          </div>
-        </header>
-
-        <div className="grid grid-cols-1 lg:grid-cols-[360px_auto] overflow-hidden flex-1">
-          <div className="border-r border-border-subtle overflow-y-auto p-4 space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <UserPlus className="w-4 h-4" />
-                  Your device
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <label className="text-xs text-text-muted block mb-1">Display name</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={selfNameDraft}
-                      onChange={(event) => setSelfNameDraft(event.target.value)}
-                      className="text-sm"
-                    />
-                    <Button size="sm" variant="secondary" onClick={handleSaveName}>
-                      Save
-                    </Button>
-                  </div>
-                </div>
-                <div className="text-xs text-text-muted break-all">
-                  Device ID: <span className="font-mono">{identity.deviceId}</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Link2 className="w-4 h-4" />
-                  Share an invite
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button onClick={handleCreateInvite} className="w-full" variant="default">
-                  Generate invite link
-                </Button>
-                {inviteLink && (
-                  <div className="text-xs">
-                    <p className="text-text-muted mb-1">Share this link with your peer:</p>
-                    <div className="p-2 rounded border border-border-subtle bg-background-medium break-all">
-                      {inviteLink}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Download className="w-4 h-4" />
-                  Join an invite
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Input
-                  placeholder="Paste goose://peer link"
-                  value={joinInput}
-                  onChange={(event) => setJoinInput(event.target.value)}
-                  className="text-sm"
-                />
-                <Button
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => handleJoinInvite(joinInput)}
-                  disabled={!joinInput.trim()}
+                <div
+                  key={contact.deviceId}
+                  onClick={() => handleSelectContact(contact)}
+                  className={`w-full text-left text-sm px-3 py-2 rounded-lg transition-colors cursor-pointer group ${
+                    currentContactId === contact.deviceId
+                      ? 'bg-primary/10 border border-primary/20'
+                      : 'hover:bg-background-medium'
+                  }`}
                 >
-                  Join
-                </Button>
-                {pendingInvite && (
-                  <div className="text-xs text-text-muted">
-                    deeplink detected.{' '}
-                    <button type="button" className="underline" onClick={() => handleJoinInvite()}>
-                      Tap to join
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium truncate">{contact.deviceName}</span>
+                    <button
+                      type="button"
+                      className="text-[10px] text-text-muted hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleForgetContact(contact.deviceId);
+                      }}
+                    >
+                      ×
                     </button>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                  <div className="text-[10px] text-text-muted mt-0.5">
+                    {new Date(contact.lastSeenAt).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
 
-          <div className="flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {messages.length === 0 && (
-                <div className="h-full flex items-center justify-center text-sm text-text-muted text-center px-6">
-                  {status === 'connected'
-                    ? 'You are connected. Start chatting below.'
-                    : 'Start a session to exchange messages.'}
+          <div className="p-3 border-t border-border-subtle">
+            <div className="flex items-start gap-2 text-[10px] text-text-muted">
+              <ShieldCheck className="w-3 h-3 mt-0.5 flex-shrink-0" />
+              <span>End-to-end encrypted WebRTC</span>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Chat Area */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <header className="flex items-center justify-between border-b border-border-subtle px-6 py-4">
+            <div className="flex-1">
+              {peer ? (
+                <div>
+                  <h1 className="text-lg font-semibold">{peer.deviceName}</h1>
+                  <p className="text-xs text-text-muted">
+                    {status === 'connected' ? 'Connected' : 'Connecting...'}
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <h1 className="text-lg font-semibold">Peer Chat</h1>
+                  <p className="text-xs text-text-muted">
+                    {statusMessage || 'No active conversation'}
+                  </p>
                 </div>
               )}
+            </div>
+            <div className="flex items-center gap-3">
+              {connectionBadge}
+              {!peer && (
+                <Button onClick={() => setIsModalOpen(true)} variant="default" size="sm">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Connect
+                </Button>
+              )}
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto p-6">
+            {messages.length === 0 && (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center max-w-md space-y-3">
+                  {status === 'connected' ? (
+                    <>
+                      <div className="text-4xl">💬</div>
+                      <p className="text-sm text-text-muted">
+                        You're connected! Start chatting below.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-4xl">🤝</div>
+                      <h3 className="text-base font-semibold">Connect with a Peer</h3>
+                      <p className="text-sm text-text-muted">
+                        Create an invite link or join an existing conversation to get started.
+                      </p>
+                      <Button
+                        onClick={() => setIsModalOpen(true)}
+                        variant="default"
+                        className="mt-4"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Get Started
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="space-y-4 max-w-3xl mx-auto">
               {messages.map((msg) => (
-                <div key={msg.id} className="flex flex-col">
+                <div
+                  key={msg.id}
+                  className={`flex flex-col ${msg.author === 'self' ? 'items-end' : 'items-start'}`}
+                >
                   <div
-                    className={`inline-flex px-3 py-2 rounded-lg text-sm max-w-lg ${
+                    className={`px-4 py-2.5 rounded-2xl text-sm max-w-md ${
                       msg.author === 'self'
-                        ? 'self-end bg-primary text-primary-foreground'
-                        : 'bg-background-medium border border-border-subtle'
+                        ? 'bg-primary text-primary-foreground rounded-br-sm'
+                        : 'bg-background-medium border border-border-subtle rounded-bl-sm'
                     }`}
                   >
                     {msg.text}
                   </div>
-                  <span className="text-[11px] text-text-muted mt-1">
-                    {msg.author === 'self' ? 'You' : (peer?.deviceName ?? 'Peer')} •{' '}
-                    {new Date(msg.at).toLocaleTimeString()}
+                  <span className="text-[10px] text-text-muted mt-1 px-2">
+                    {new Date(msg.at).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </span>
                 </div>
               ))}
               <div ref={messagesEndRef} />
             </div>
-
-            <form onSubmit={handleSubmitSend} className="border-t border-border-subtle px-4 py-3">
-              <div className="flex gap-2">
-                <Input
-                  name="message"
-                  placeholder={
-                    status === 'connected' ? 'Send a message…' : 'Connect to enable chat'
-                  }
-                  disabled={status !== 'connected'}
-                  className="text-sm"
-                  autoComplete="off"
-                />
-                <Button type="submit" disabled={status !== 'connected'}>
-                  <Send className="w-4 h-4" />
-                </Button>
-              </div>
-              {connectError && <p className="text-xs text-destructive mt-2">{connectError}</p>}
-            </form>
           </div>
-        </div>
-      </main>
-    </div>
+
+          <form onSubmit={handleSubmitSend} className="border-t border-border-subtle px-6 py-4">
+            <div className="flex gap-3 max-w-3xl mx-auto">
+              <Input
+                name="message"
+                placeholder={
+                  status === 'connected' ? 'Type a message...' : 'Connect to start chatting'
+                }
+                disabled={status !== 'connected'}
+                className="flex-1"
+                autoComplete="off"
+              />
+              <Button
+                type="submit"
+                disabled={status !== 'connected'}
+                size="sm"
+                className="h-10 w-10 rounded-full p-0"
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
+            {connectError && (
+              <p className="text-xs text-destructive mt-2 max-w-3xl mx-auto">{connectError}</p>
+            )}
+          </form>
+        </main>
+      </div>
+    </>
   );
 };
 
