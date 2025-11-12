@@ -426,10 +426,9 @@ export const PeerChatView: React.FC = () => {
               )}
               {contacts.map((contact) => (
                 <li key={contact.deviceId}>
-                  <button
-                    type="button"
+                  <div
                     onClick={() => handleSelectContact(contact)}
-                    className={`w-full text-left text-sm px-2 py-1 rounded border transition-colors ${
+                    className={`w-full text-left text-sm px-2 py-1 rounded border transition-colors cursor-pointer ${
                       currentContactId === contact.deviceId
                         ? 'border-primary/40 bg-primary/10'
                         : 'border-transparent hover:border-border-subtle hover:bg-background-medium'
@@ -451,7 +450,7 @@ export const PeerChatView: React.FC = () => {
                     <div className="text-[11px] text-text-muted mt-1">
                       Seen {new Date(contact.lastSeenAt).toLocaleString()}
                     </div>
-                  </button>
+                  </div>
                 </li>
               ))}
             </ul>
