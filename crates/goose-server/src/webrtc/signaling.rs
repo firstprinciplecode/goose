@@ -161,8 +161,8 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>, room_id: String, tok
         .attach(&room_id, &token, tx.clone())
         .await;
 
-    let attached = match attach_result {
-        Ok(attached) => attached,
+    let (attached, other_peer_sender) = match attach_result {
+        Ok(result) => result,
         Err(err) => {
             let _ = tx.send(Message::Text(
                 serde_json::json!({
@@ -177,7 +177,24 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>, room_id: String, tok
         }
     };
 
+    // Send ready to this peer
     send_ready(&tx, &room_id, &attached).await;
+
+    // If the other peer is already connected, notify them too
+    if let Some(other_tx) = other_peer_sender {
+        // Construct the other peer's info for the notification
+        let other_role = match attached.role {
+            PeerRole::Host => PeerRole::Guest,
+            PeerRole::Guest => PeerRole::Host,
+        };
+        let other_attached = AttachedPeer {
+            role: other_role,
+            self_identity: attached.peer_identity.clone().unwrap_or_else(|| attached.self_identity.clone()),
+            peer_identity: Some(attached.self_identity.clone()),
+            expires_at: attached.expires_at,
+        };
+        send_ready(&other_tx, &room_id, &other_attached).await;
+    }
 
     let forward_registry = state.peer_registry.clone();
     let forward_room = room_id.clone();

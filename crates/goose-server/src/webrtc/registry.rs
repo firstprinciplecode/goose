@@ -126,7 +126,7 @@ impl PeerRegistry {
         room_id: &str,
         token: &str,
         sender: mpsc::UnboundedSender<Message>,
-    ) -> Result<AttachedPeer, RegistryError> {
+    ) -> Result<(AttachedPeer, Option<mpsc::UnboundedSender<Message>>), RegistryError> {
         let mut rooms = self.inner.lock().await;
         let room = rooms.get_mut(room_id).ok_or(RegistryError::NotFound)?;
 
@@ -142,12 +142,16 @@ impl PeerRegistry {
             room.host_sender = Some(sender.clone());
             room.host_connected = true;
             let peer = room.guest_info.clone();
-            return Ok(AttachedPeer {
-                role: PeerRole::Host,
-                self_identity: room.host.clone(),
-                peer_identity: peer,
-                expires_at: room.expires_at,
-            });
+            let other_sender = room.guest_sender.clone();
+            return Ok((
+                AttachedPeer {
+                    role: PeerRole::Host,
+                    self_identity: room.host.clone(),
+                    peer_identity: peer,
+                    expires_at: room.expires_at,
+                },
+                other_sender,
+            ));
         }
 
         match &room.guest_ws_token {
@@ -158,12 +162,16 @@ impl PeerRegistry {
                 let guest_info = room.guest_info.clone().ok_or(RegistryError::MissingPeer)?;
                 room.guest_sender = Some(sender.clone());
                 room.guest_connected = true;
-                return Ok(AttachedPeer {
-                    role: PeerRole::Guest,
-                    self_identity: guest_info,
-                    peer_identity: Some(room.host.clone()),
-                    expires_at: room.expires_at,
-                });
+                let other_sender = room.host_sender.clone();
+                return Ok((
+                    AttachedPeer {
+                        role: PeerRole::Guest,
+                        self_identity: guest_info,
+                        peer_identity: Some(room.host.clone()),
+                        expires_at: room.expires_at,
+                    },
+                    other_sender,
+                ));
             }
             _ => Err(RegistryError::InvalidToken),
         }
