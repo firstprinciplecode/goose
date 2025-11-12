@@ -258,7 +258,7 @@ export const PeerChatView: React.FC = () => {
         setStatusMessage('Connection failed');
       } else if (state === 'disconnected') {
         setStatus('disconnected');
-        setStatusMessage('Peer disconnected');
+        setStatusMessage('Modem disconnected');
       }
     });
 
@@ -270,7 +270,7 @@ export const PeerChatView: React.FC = () => {
 
     nextClient.on('disconnected', () => {
       setStatus('disconnected');
-      setStatusMessage('Peer disconnected');
+      setStatusMessage('Modem disconnected');
     });
 
     setClient(nextClient);
@@ -339,10 +339,10 @@ export const PeerChatView: React.FC = () => {
           ? response.host_base_url.trim()
           : (shareBase ?? null);
       if (effectiveShare) {
-        setStatusMessage(`Waiting for peer to join via ${effectiveShare}`);
+        setStatusMessage(`Waiting for Modem partner to join via ${effectiveShare}`);
         setConnectError(null);
       } else {
-        setStatusMessage('Waiting for peer to join');
+        setStatusMessage('Waiting for Modem partner to join');
         setConnectError(
           'Invite link does not include a reachable address. Configure Session Sharing > Base URL so peers on other machines can reach you.'
         );
@@ -587,7 +587,7 @@ export const PeerChatView: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 p-0"
-                title="Peer Chat Settings"
+                title="Modem Settings"
               >
                 <Settings className="w-4 h-4" />
               </Button>
@@ -668,7 +668,7 @@ export const PeerChatView: React.FC = () => {
                 </div>
               ) : (
                 <div>
-                  <h1 className="text-lg font-semibold">Peer Chat</h1>
+                  <h1 className="text-lg font-semibold">Modem</h1>
                   <p className="text-xs text-text-muted">
                     {statusMessage || 'No active conversation'}
                   </p>
@@ -700,7 +700,7 @@ export const PeerChatView: React.FC = () => {
                   ) : (
                     <>
                       <div className="text-4xl">🤝</div>
-                      <h3 className="text-base font-semibold">Connect with a Peer</h3>
+                      <h3 className="text-base font-semibold">Connect via Modem</h3>
                       <p className="text-sm text-text-muted">
                         Create an invite link or join an existing conversation to get started.
                       </p>

@@ -135,9 +135,9 @@ export const PeerSettingsModal: React.FC<PeerSettingsModalProps> = ({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Peer Connection Settings</DialogTitle>
+          <DialogTitle>Modem Settings</DialogTitle>
           <DialogDescription>
-            Configure relay servers or manage the optional ngrok tunnel for remote peers.
+            Configure relay servers or manage the optional ngrok tunnel for remote Modem partners.
           </DialogDescription>
         </DialogHeader>
 

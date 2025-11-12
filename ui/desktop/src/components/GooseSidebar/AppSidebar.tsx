@@ -59,9 +59,9 @@ const menuItems: NavigationEntry[] = [
   {
     type: 'item',
     path: '/peer',
-    label: 'Peer Chat',
+    label: 'Modem',
     icon: UsersRound,
-    tooltip: 'Connect with another Goose desktop',
+    tooltip: 'Open a Modem session with another Goose desktop',
   },
   {
     type: 'item',

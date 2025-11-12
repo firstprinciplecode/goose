@@ -47,7 +47,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Connect with a Peer</DialogTitle>
+          <DialogTitle>Connect via Modem</DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="create" className="w-full">
@@ -64,7 +64,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 
           <TabsContent value="create" className="space-y-4 mt-4">
             <div className="text-sm text-text-muted">
-              Generate a secure invite link to share with your peer.
+              Generate a secure invite link to share with your Modem partner.
             </div>
 
             <Button
@@ -94,7 +94,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                   </Button>
                 </div>
                 <p className="text-xs text-text-muted">
-                  Share this link with your peer. They can paste it in the "Join Invite" tab.
+                  Share this link with your Modem partner. They can paste it in the "Join Invite"
+                  tab.
                 </p>
               </div>
             )}
@@ -102,7 +103,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 
           <TabsContent value="join" className="space-y-4 mt-4">
             <div className="text-sm text-text-muted">
-              Paste an invite link you received from a peer.
+              Paste an invite link you received from a Modem partner.
             </div>
 
             <form onSubmit={handleJoin} className="space-y-4">

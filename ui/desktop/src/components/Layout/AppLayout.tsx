@@ -102,7 +102,7 @@ const AppLayoutContent: React.FC<AppLayoutProps> = ({ setIsGoosehintsModalOpen }
             className="no-drag hover:!bg-background-medium"
             variant="ghost"
             size="xs"
-            title="Open Peer Chat"
+            title="Open Modem"
           >
             <UsersRound className="w-4 h-4" />
           </Button>

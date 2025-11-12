@@ -216,7 +216,7 @@ export const ConnectionDiagnostics: React.FC<ConnectionDiagnosticsProps> = ({
         <DialogHeader>
           <DialogTitle>Connection Diagnostics</DialogTitle>
           <DialogDescription>
-            Check peer connection status and troubleshoot connectivity issues.
+            Check Modem connection status and troubleshoot connectivity issues.
           </DialogDescription>
         </DialogHeader>
 
