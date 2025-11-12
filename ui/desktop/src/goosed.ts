@@ -116,6 +116,7 @@ export const startGoosed = async (
     PATH: `${path.dirname(resolvedGoosedPath)}${path.delimiter}${process.env.PATH || ''}`,
     GOOSE_PORT: String(port),
     GOOSE_SERVER__SECRET_KEY: serverSecret,
+    GOOSE_SERVER__HOST: process.env.GOOSE_SERVER__HOST || '0.0.0.0',
     // Add any additional environment variables passed in
     ...env,
   } as GooseProcessEnv;
