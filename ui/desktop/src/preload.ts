@@ -43,6 +43,7 @@ interface PeerCreateInviteRequest {
   deviceId: string;
   deviceName: string;
   publicKey?: string;
+  shareBaseUrl?: string;
 }
 
 interface PeerCreateInviteResponse {
@@ -51,6 +52,7 @@ interface PeerCreateInviteResponse {
   invite_token: string;
   invite_url: string;
   expires_at: string;
+  host_base_url?: string;
 }
 
 interface PeerJoinInviteRequest {
@@ -59,6 +61,7 @@ interface PeerJoinInviteRequest {
   deviceId: string;
   deviceName: string;
   publicKey?: string;
+  baseUrlOverride?: string;
 }
 
 interface PeerJoinInviteResponse {
@@ -70,6 +73,7 @@ interface PeerJoinInviteResponse {
     public_key?: string | null;
   };
   expires_at: string;
+  host_base_url?: string;
 }
 
 export interface PeerInvitePayload {
@@ -78,6 +82,7 @@ export interface PeerInvitePayload {
   hostToken?: string;
   inviterName?: string;
   inviterDeviceId?: string;
+  hostBaseUrl?: string;
 }
 
 interface ExecuteCommandResult {

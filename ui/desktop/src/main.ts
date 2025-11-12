@@ -235,6 +235,7 @@ type PeerInvitePayload = {
   hostToken?: string;
   inviterName?: string;
   inviterDeviceId?: string;
+  hostBaseUrl?: string;
 };
 
 async function handleProtocolUrl(url: string) {
@@ -1119,6 +1120,7 @@ function extractPeerInvite(parsedUrl: URL): PeerInvitePayload | null {
   const hostToken = parsedUrl.searchParams.get('hostToken') ?? undefined;
   const inviterName = parsedUrl.searchParams.get('from') ?? undefined;
   const inviterDeviceId = parsedUrl.searchParams.get('device') ?? undefined;
+  const hostBaseUrl = parsedUrl.searchParams.get('host') ?? undefined;
 
   return {
     roomId,
@@ -1126,8 +1128,29 @@ function extractPeerInvite(parsedUrl: URL): PeerInvitePayload | null {
     hostToken,
     inviterName,
     inviterDeviceId,
+    hostBaseUrl,
   };
 }
+
+const deriveShareBaseUrl = (baseUrl: string): string | null => {
+  try {
+    const parsed = new URL(baseUrl);
+    const protocol = parsed.protocol === 'https:' ? 'https:' : 'http:';
+    const port = parsed.port ? `:${parsed.port}` : '';
+    const interfaces = os.networkInterfaces();
+    for (const entries of Object.values(interfaces)) {
+      if (!entries) continue;
+      for (const entry of entries) {
+        if (entry.family === 'IPv4' && !entry.internal && entry.address) {
+          return `${protocol}//${entry.address}${port}`;
+        }
+      }
+    }
+  } catch (error) {
+    log.warn('Failed to derive share base URL', error);
+  }
+  return null;
+};
 
 // Global error handler
 const handleFatalError = (error: Error) => {
@@ -1288,7 +1311,10 @@ ipcMain.handle('peer-get-base-url', async (event) => {
 
 ipcMain.handle(
   'peer-create-invite',
-  async (event, payload: { deviceId: string; deviceName: string; publicKey?: string }) => {
+  async (
+    event,
+    payload: { deviceId: string; deviceName: string; publicKey?: string; shareBaseUrl?: string }
+  ) => {
     const baseUrl = getGooseBaseUrl(event.sender);
     if (!baseUrl) {
       throw new Error('Goose server is not ready');
@@ -1313,7 +1339,28 @@ ipcMain.handle(
       throw new Error(`Failed to create invite (${response.status}): ${errorText}`);
     }
 
-    return response.json();
+    const payloadShareBase = payload.shareBaseUrl?.trim();
+    const hostBase =
+      payloadShareBase && payloadShareBase.length > 0
+        ? payloadShareBase
+        : (deriveShareBaseUrl(baseUrl) ?? undefined);
+    const result = (await response.json()) as Record<string, unknown>;
+
+    if (typeof result.invite_url === 'string' && hostBase) {
+      try {
+        const inviteUrl = new URL(result.invite_url);
+        inviteUrl.searchParams.set('host', hostBase);
+        result.invite_url = inviteUrl.toString();
+      } catch (error) {
+        log.warn('Failed to append host base to invite URL', error);
+      }
+    }
+
+    if (hostBase) {
+      result.host_base_url = hostBase;
+    }
+
+    return result;
   }
 );
 
@@ -1327,20 +1374,23 @@ ipcMain.handle(
       deviceId: string;
       deviceName: string;
       publicKey?: string;
+      baseUrlOverride?: string;
     }
   ) => {
-    const baseUrl = getGooseBaseUrl(event.sender);
+    const override = payload.baseUrlOverride?.trim();
+    const baseUrl = override && override.length > 0 ? override : getGooseBaseUrl(event.sender);
     if (!baseUrl) {
       throw new Error('Goose server is not ready');
     }
 
     const url = buildGooseUrl(baseUrl, '/peer/join');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (!override) {
+      headers['X-Secret-Key'] = SERVER_SECRET;
+    }
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Secret-Key': SERVER_SECRET,
-      },
+      headers,
       body: JSON.stringify({
         room_id: payload.roomId,
         invite_token: payload.inviteToken,
@@ -1355,7 +1405,9 @@ ipcMain.handle(
       throw new Error(`Failed to join invite (${response.status}): ${errorText}`);
     }
 
-    return response.json();
+    const result = (await response.json()) as Record<string, unknown>;
+    result.host_base_url = baseUrl;
+    return result;
   }
 );
 

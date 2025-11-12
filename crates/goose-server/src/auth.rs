@@ -1,6 +1,6 @@
 use axum::{
     extract::{Request, State},
-    http::StatusCode,
+    http::{Method, StatusCode},
     middleware::Next,
     response::Response,
 };
@@ -10,7 +10,11 @@ pub async fn check_token(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    if request.uri().path() == "/status" {
+    if request.method() == Method::OPTIONS {
+        return Ok(next.run(request).await);
+    }
+    let path = request.uri().path();
+    if path == "/status" || path == "/peer/join" || path.starts_with("/peer/ws/") {
         return Ok(next.run(request).await);
     }
     let secret_key = request

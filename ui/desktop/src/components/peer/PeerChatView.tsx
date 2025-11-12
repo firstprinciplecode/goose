@@ -37,7 +37,7 @@ type ConnectionStatus =
   | 'disconnected'
   | 'error';
 
-function parseInvite(input: string): { roomId: string; token: string } | null {
+function parseInvite(input: string): { roomId: string; token: string; baseUrl?: string } | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
 
@@ -47,8 +47,9 @@ function parseInvite(input: string): { roomId: string; token: string } | null {
       if (url.protocol !== 'goose:') return null;
       const roomId = url.searchParams.get('room') ?? '';
       const token = url.searchParams.get('token') ?? '';
+      const hostBaseUrl = url.searchParams.get('host') ?? undefined;
       if (!roomId || !token) return null;
-      return { roomId, token };
+      return { roomId, token, baseUrl: hostBaseUrl ?? undefined };
     } catch (error) {
       console.warn('[Peer] failed to parse invite URL', error);
       return null;
@@ -72,9 +73,11 @@ export const PeerChatView: React.FC = () => {
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [pendingInvite, setPendingInvite] = useState<{ roomId: string; token: string } | null>(
-    null
-  );
+  const [pendingInvite, setPendingInvite] = useState<{
+    roomId: string;
+    token: string;
+    baseUrl?: string;
+  } | null>(null);
   const [client, setClient] = useState<GoosePeerClient | null>(null);
   const [peer, setPeer] = useState<PeerIdentity | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -87,7 +90,11 @@ export const PeerChatView: React.FC = () => {
     try {
       unsubscribe = window.electron.peer.onInvite((payload) => {
         if (payload.roomId && payload.token) {
-          setPendingInvite({ roomId: payload.roomId, token: payload.token });
+          setPendingInvite({
+            roomId: payload.roomId,
+            token: payload.token,
+            baseUrl: payload.hostBaseUrl,
+          });
           setStatus('pending');
           setStatusMessage('Received invite link');
         }
@@ -227,6 +234,33 @@ export const PeerChatView: React.FC = () => {
     return url;
   };
 
+  const resolveShareBaseUrl = (): string | null => {
+    const envBase = window.appConfig.get('GOOSE_BASE_URL_SHARE');
+    if (typeof envBase === 'string') {
+      const trimmed = envBase.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+
+    try {
+      const stored = window.localStorage.getItem('session_sharing_config');
+      if (stored) {
+        const parsed = JSON.parse(stored) as { enabled?: boolean; baseUrl?: string };
+        if (parsed?.enabled && typeof parsed.baseUrl === 'string') {
+          const trimmed = parsed.baseUrl.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[Peer] failed to read session sharing settings', error);
+    }
+
+    return null;
+  };
+
   const handleCreateInvite = async () => {
     resetSession();
     setStatus('connecting');
@@ -236,12 +270,26 @@ export const PeerChatView: React.FC = () => {
       if (!url) {
         throw new Error('Goose server unavailable');
       }
+      const shareBase = resolveShareBaseUrl();
       const response = await window.electron.peer.createInvite({
         deviceId: identity.deviceId,
         deviceName: identity.deviceName,
+        shareBaseUrl: shareBase ?? undefined,
       });
       setInviteLink(response.invite_url);
-      setStatusMessage('Waiting for peer to join');
+      const effectiveShare =
+        typeof response.host_base_url === 'string' && response.host_base_url.trim().length > 0
+          ? response.host_base_url.trim()
+          : (shareBase ?? null);
+      if (effectiveShare) {
+        setStatusMessage(`Waiting for peer to join via ${effectiveShare}`);
+        setConnectError(null);
+      } else {
+        setStatusMessage('Waiting for peer to join');
+        setConnectError(
+          'Invite link does not include a reachable address. Configure Session Sharing > Base URL so peers on other machines can reach you.'
+        );
+      }
 
       const clientInstance = createPeerClient({
         role: 'host',
@@ -281,17 +329,24 @@ export const PeerChatView: React.FC = () => {
         inviteToken: payload.token,
         deviceId: identity.deviceId,
         deviceName: identity.deviceName,
+        baseUrlOverride: payload.baseUrl,
       });
 
       setStatus('connecting');
       setStatusMessage('Negotiating connection');
+      const signalingBase =
+        payload.baseUrl ??
+        (typeof response.host_base_url === 'string' && response.host_base_url
+          ? response.host_base_url
+          : url);
       const clientInstance = createPeerClient({
         role: 'guest',
         roomId: response.room_id,
         wsToken: response.ws_token,
-        signalingBaseUrl: url,
+        signalingBaseUrl: signalingBase,
       });
       attachClient(clientInstance);
+      setPendingInvite(null);
       if (response.host) {
         upsertContact({
           deviceId: response.host.device_id,
