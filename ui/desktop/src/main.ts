@@ -1975,7 +1975,7 @@ async function appMain() {
           // Manifest files
           "manifest-src 'self';" +
           // Worker sources
-          "worker-src 'self';" +
+          "worker-src 'self' blob:;" +
           // Upgrade insecure requests
           'upgrade-insecure-requests;',
       },
