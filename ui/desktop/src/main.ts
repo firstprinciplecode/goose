@@ -1959,7 +1959,7 @@ async function appMain() {
           // Images from our app and data: URLs (for base64 images)
           "img-src 'self' data: https:;" +
           // Connect to our local API and specific external services
-          "connect-src 'self' http://127.0.0.1:* https://api.github.com https://github.com https://objects.githubusercontent.com" +
+          "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* https://api.github.com https://github.com https://objects.githubusercontent.com wss:;" +
           // Don't allow any plugins
           "object-src 'none';" +
           // Allow all frames (iframes)

@@ -25,7 +25,7 @@ pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/peer/invite", post(create_invite))
         .route("/peer/join", post(join_invite))
-        .route("/peer/ws/:room_id", get(ws_upgrade))
+        .route("/peer/ws/{room_id}", get(ws_upgrade))
         .with_state(state)
 }
 
