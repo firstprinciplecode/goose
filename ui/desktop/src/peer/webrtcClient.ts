@@ -202,10 +202,14 @@ export class GoosePeerClient {
     this.channel = channel;
     channel.onopen = () => {
       console.info('[Peer] data channel open');
+      this.emit('state', 'connected');
+      this.emit('connected', undefined);
     };
     channel.onclose = () => {
       console.info('[Peer] data channel closed');
+      this.emit('state', 'disconnected');
       this.emit('disconnected', undefined);
+      this.channel = undefined;
     };
     channel.onerror = (event) => {
       console.error('[Peer] data channel error', event);
