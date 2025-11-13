@@ -176,6 +176,25 @@ export const PeerChatView: React.FC = () => {
     };
   }, [client]);
 
+  const statusLabel = useMemo(() => {
+    switch (status) {
+      case 'connected':
+        return 'Connected';
+      case 'connecting':
+        return 'Connecting…';
+      case 'pending':
+        return 'Invite received';
+      case 'ready':
+        return 'Ready';
+      case 'disconnected':
+        return 'Disconnected';
+      case 'error':
+        return 'Error';
+      default:
+        return 'Idle';
+    }
+  }, [status]);
+
   const connectionBadge = useMemo(() => {
     switch (status) {
       case 'connected':
@@ -185,11 +204,11 @@ export const PeerChatView: React.FC = () => {
         return (
           <Badge variant="secondary" className="flex items-center gap-1">
             <Loader2 className="w-3 h-3 animate-spin" />
-            Connecting
+            {status === 'pending' ? 'Awaiting partner' : 'Connecting'}
           </Badge>
         );
       case 'error':
-        return <Badge variant="destructive">Failed</Badge>;
+        return <Badge variant="destructive">Error</Badge>;
       case 'disconnected':
         return <Badge variant="outline">Disconnected</Badge>;
       default:
@@ -356,6 +375,7 @@ export const PeerChatView: React.FC = () => {
         iceServers: buildIceServers(peerSettings),
       });
       attachClient(clientInstance);
+      setStatus('pending');
     } catch (error) {
       console.error('Failed to create invite', error);
       setStatus('error');
@@ -663,7 +683,7 @@ export const PeerChatView: React.FC = () => {
                 <div>
                   <h1 className="text-lg font-semibold">{peer.deviceName}</h1>
                   <p className="text-xs text-text-muted">
-                    {status === 'connected' ? 'Connected' : 'Connecting...'}
+                    {status === 'connected' ? statusLabel : (statusMessage ?? statusLabel)}
                   </p>
                 </div>
               ) : (
