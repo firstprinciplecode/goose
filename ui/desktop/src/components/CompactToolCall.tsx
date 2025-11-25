@@ -157,24 +157,26 @@ export default function CompactToolCall({
   const toolLabelContent = (
     <span
       className={cn(
-        'flex items-center gap-2 cursor-pointer',
+        'inline-flex items-center gap-1.5 cursor-pointer',
         extensionTooltip && 'hover:opacity-80'
       )}
       onClick={handleClick}
     >
-      <ToolIconWithStatus ToolIcon={getToolCallIcon(toolCall.name)} status={toolCallStatus} />
-      <span className="font-medium">{toolLabel}</span>
+      <span className="flex items-center" style={{ fontSize: '0.65rem' }}>
+        <ToolIconWithStatus ToolIcon={getToolCallIcon(toolCall.name)} status={toolCallStatus} />
+      </span>
+      <span className="font-normal">{toolLabel}</span>
     </span>
   );
 
   return (
-    <div
+    <span
       className={cn(
-        'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg',
-        'border border-zinc-200 dark:border-zinc-800',
-        'bg-white/50 dark:bg-zinc-900/50',
-        'hover:bg-white/80 dark:hover:bg-zinc-900/80',
-        'transition-all cursor-pointer group'
+        'inline-flex items-center gap-1.5',
+        'text-xs text-zinc-500 dark:text-zinc-400',
+        'cursor-pointer group',
+        'transition-colors',
+        'hover:text-zinc-700 dark:hover:text-zinc-300'
       )}
       onClick={handleClick}
     >
@@ -187,12 +189,12 @@ export default function CompactToolCall({
       )}
       <ChevronRight
         className={cn(
-          'w-4 h-4 text-zinc-400 dark:text-zinc-500',
-          'group-hover:text-zinc-600 dark:group-hover:text-zinc-300',
-          'transition-colors'
+          'w-3 h-3',
+          'transition-transform',
+          'group-hover:translate-x-0.5'
         )}
       />
-    </div>
+    </span>
   );
 }
 
