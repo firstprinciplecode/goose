@@ -43,7 +43,6 @@ export const TabSidecarInvoker: React.FC<TabSidecarInvokerProps> = ({
   // Component is always rendered but hidden/shown with CSS transitions
 
   const handleLocalhostClick = () => {
-    console.log('🔍 TabSidecarInvoker: Localhost button clicked for tab:', tabId);
     showLocalhostViewer(tabId, 'http://localhost:3000', 'Localhost Viewer');
     setIsHovering(false);
   };
@@ -70,7 +69,6 @@ export const TabSidecarInvoker: React.FC<TabSidecarInvokerProps> = ({
   };
 
   const handleDocumentEditorClick = () => {
-    console.log('🔍 TabSidecarInvoker: Document Editor button clicked for tab:', tabId);
     showDocumentEditor(tabId, undefined, 'Start writing your document...', 'new-doc');
     setIsHovering(false);
   };
@@ -97,13 +95,11 @@ export const TabSidecarInvoker: React.FC<TabSidecarInvokerProps> = ({
   };
 
   const handleWebViewerClick = () => {
-    console.log('🔍 TabSidecarInvoker: Web Viewer button clicked for tab:', tabId);
     showWebViewer(tabId, 'https://google.com', 'Web Browser', 'web-viewer');
     setIsHovering(false);
   };
 
   const handleDiffViewerClick = () => {
-    console.log('🔍 TabSidecarInvoker: Diff Viewer button clicked for tab:', tabId);
     // For demo purposes, show a sample diff
     const sampleDiff = `--- a/example.js
 +++ b/example.js

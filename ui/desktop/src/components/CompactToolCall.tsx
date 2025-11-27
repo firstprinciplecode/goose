@@ -2,14 +2,11 @@ import { ChevronRight } from 'lucide-react';
 import React, { useCallback } from 'react';
 import { ToolIconWithStatus, ToolCallStatus } from './ToolCallStatusIndicator';
 import { getToolCallIcon } from '../utils/toolIconMapping';
-import { ToolRequestMessageContent, ToolResponseMessageContent, Content } from '../types/message';
+import { ToolRequestMessageContent, ToolResponseMessageContent } from '../types/message';
 import { cn, snakeToTitleCase } from '../utils';
 import { useTabContext } from '../contexts/TabContext';
 import { NotificationEvent } from '../hooks/useMessageStream';
-import MarkdownContent from './MarkdownContent';
-import { ToolCallArguments } from './ToolCallArguments';
 import { TooltipWrapper } from './settings/providers/subcomponents/buttons/TooltipWrapper';
-import { LoadingStatus } from './ui/Dot';
 
 interface CompactToolCallProps {
   tabId: string;
@@ -28,7 +25,7 @@ export default function CompactToolCall({
   isStreamingMessage = false,
   isCancelledMessage = false,
 }: CompactToolCallProps) {
-  const { showDocumentEditor } = useTabContext();
+  const { showSidecarView } = useTabContext();
   const toolCall = toolRequest.toolCall.status === 'success' ? toolRequest.toolCall.value : null;
 
   if (!toolCall) {
@@ -145,14 +142,30 @@ export default function CompactToolCall({
       content += '\n```\n\n';
     }
 
-    // Open in document editor sidecar
-    showDocumentEditor(
-      tabId,
-      undefined, // no file path
-      content,
-      `tool-${toolRequest.id}` // unique instance ID
-    );
-  }, [tabId, toolLabel, toolCall, toolResponse, notifications, toolRequest.id, showDocumentEditor]);
+    const metadata: string[] = [];
+    metadata.push(`Tool: ${toolCall.name}`);
+    if (toolResponse?.toolResult?.status) {
+      metadata.push(`Status: ${toolResponse.toolResult.status}`);
+    }
+    const extensionName = (toolCall.arguments as any)?.extension;
+    if (typeof extensionName === 'string') {
+      metadata.push(`Extension: ${extensionName}`);
+    }
+
+    showSidecarView(tabId, {
+      id: `tool-output-${toolRequest.id}`,
+      title: toolLabel,
+      iconType: 'tool-output',
+      contentType: 'tool-output',
+      contentProps: {
+        heading: toolLabel,
+        content,
+        metadata,
+      },
+      fileName: toolCall.name,
+      instanceId: `tool-${toolRequest.id}`,
+    });
+  }, [tabId, toolLabel, toolCall, toolResponse, notifications, toolRequest.id, showSidecarView]);
 
   const toolLabelContent = (
     <span

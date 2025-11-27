@@ -10,8 +10,8 @@ import '../styles/tabs.css';
 export interface TabSidecarView {
   id: string;
   title: string;
-  iconType: 'diff' | 'localhost' | 'web' | 'file' | 'editor';
-  contentType: 'diff' | 'localhost' | 'web' | 'file' | 'editor';
+  iconType: 'diff' | 'localhost' | 'web' | 'file' | 'editor' | 'tool-output';
+  contentType: 'diff' | 'localhost' | 'web' | 'file' | 'editor' | 'tool-output';
   contentProps: Record<string, any>;
   fileName?: string;
   instanceId?: string;

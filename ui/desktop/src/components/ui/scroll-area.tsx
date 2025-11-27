@@ -73,22 +73,44 @@ const ScrollArea = React.forwardRef<ScrollAreaHandle, ScrollAreaProps>(
       setIsScrolled(scrollTop > 0);
     }, []);
 
-    // Track previous scroll height to detect content changes
+    // Track previous scroll height and width to detect content vs layout changes
     const prevScrollHeightRef = React.useRef<number>(0);
+    const prevWidthRef = React.useRef<number>(0);
 
     React.useEffect(() => {
-      if (!autoScroll || !isFollowing || !viewportRef.current) return;
+      if (!viewportRef.current) return;
 
       const viewport = viewportRef.current;
       const currentScrollHeight = viewport.scrollHeight;
+      const currentWidth = viewport.clientWidth;
 
-      // Only auto-scroll if content has actually grown (new content added)
-      // and we were already following (at the bottom)
-      if (currentScrollHeight > prevScrollHeightRef.current) {
+      // Detect if this is a width change (layout reflow from sidecar opening/closing)
+      const isWidthChange = prevWidthRef.current !== 0 && currentWidth !== prevWidthRef.current;
+      const isHeightGrowth = currentScrollHeight > prevScrollHeightRef.current;
+      
+      // Only log when something actually changed
+      if (isWidthChange || isHeightGrowth) {
+        console.log('📜 ScrollArea change:', {
+          isWidthChange,
+          isHeightGrowth,
+          widthDelta: currentWidth - prevWidthRef.current,
+          heightDelta: currentScrollHeight - prevScrollHeightRef.current,
+          wouldScroll: autoScroll && isFollowing && isHeightGrowth && !isWidthChange,
+        });
+      }
+
+      // Only auto-scroll if:
+      // 1. autoScroll is enabled
+      // 2. AND we were already following (at the bottom)
+      // 3. AND content has actually grown (new content added)
+      // 4. AND this is not just a width/layout change
+      if (autoScroll && isFollowing && isHeightGrowth && !isWidthChange) {
+        console.log('📜 ScrollArea: SCROLLING TO BOTTOM');
         scrollToBottom();
       }
 
       prevScrollHeightRef.current = currentScrollHeight;
+      prevWidthRef.current = currentWidth;
     }, [children, autoScroll, isFollowing, scrollToBottom]);
 
     // Add scroll event listener

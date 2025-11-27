@@ -1,18 +1,19 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { 
-  X, 
-  SquareSplitHorizontal, 
-  BetweenHorizontalStart, 
-  FileDiff, 
-  Globe, 
-  FileText, 
-  Edit, 
+import {
+  X,
+  SquareSplitHorizontal,
+  BetweenHorizontalStart,
+  FileDiff,
+  Globe,
+  FileText,
+  Edit,
   Monitor,
+  ScrollText,
   MoreVertical,
   Plus,
   GripVertical,
-  Move
+  Move,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/Tooltip';
@@ -26,6 +27,7 @@ import { TabSidecarState, TabSidecarView } from './TabBar';
 import DocumentEditor from './DocumentEditor';
 import WebViewer from './WebViewer';
 import { useUnifiedSidecarContextOptional } from '../contexts/UnifiedSidecarContext';
+import ToolOutputCanvas from './ToolOutputCanvas';
 
 export type SidecarLayoutMode = 'single' | 'columns' | 'rows' | 'grid' | 'custom';
 
@@ -89,6 +91,8 @@ const renderIcon = (iconType: string) => {
       return <FileText size={16} />;
     case 'editor':
       return <Edit size={16} />;
+    case 'tool-output':
+      return <ScrollText size={16} />;
     default:
       return <FileText size={16} />;
   }
@@ -109,6 +113,15 @@ const renderContent = (contentType: string, contentProps: Record<string, any>, t
       return <SimpleFileViewer key={key} path={contentProps.path || ''} />;
     case 'editor':
       return <RichDocumentEditor key={key} path={contentProps.path} content={contentProps.content} />;
+    case 'tool-output':
+      return (
+        <ToolOutputCanvas
+          key={key}
+          content={contentProps.content || ''}
+          heading={contentProps.heading}
+          metadata={contentProps.metadata}
+        />
+      );
     default:
       return <div key={key} className="h-full p-4 bg-background-default">Unknown content type: {contentType}</div>;
   }
@@ -399,7 +412,6 @@ export const MultiPanelTabSidecar: React.FC<MultiPanelTabSidecarProps> = ({
       return;
     }
 
-    console.log('🔧 MultiPanelTabSidecar: Registering', activeViews.length, 'views with unified context');
 
     // Register each active view
     activeViews.forEach(view => {
@@ -445,7 +457,6 @@ export const MultiPanelTabSidecar: React.FC<MultiPanelTabSidecarProps> = ({
 
         case 'web':
           // Skip - WebBrowser component handles its own registration
-          console.log('🔧 MultiPanelTabSidecar: Skipping web viewer registration (handled by WebBrowser component)');
           break;
 
         case 'file':
@@ -486,11 +497,21 @@ export const MultiPanelTabSidecar: React.FC<MultiPanelTabSidecarProps> = ({
             timestamp: Date.now(),
           };
           break;
+
+        case 'tool-output':
+          sidecarInfo = {
+            id: sidecarId,
+            type: 'tool-output' as const,
+            title: view.title || 'Tool Output',
+            toolName: view.fileName || view.title || 'tool',
+            contentLength: (view.contentProps.content || '').length,
+            timestamp: Date.now(),
+          };
+          break;
       }
 
       if (sidecarInfo) {
         unifiedSidecarContext.registerSidecar(sidecarInfo);
-        console.log('🔧 MultiPanelTabSidecar: Registered sidecar:', sidecarInfo.id, sidecarInfo.type);
       }
     });
 
@@ -501,7 +522,6 @@ export const MultiPanelTabSidecar: React.FC<MultiPanelTabSidecarProps> = ({
         if (view.contentType !== 'web') {
           const sidecarId = `tab-${tabId}-${view.id}`;
           unifiedSidecarContext.unregisterSidecar(sidecarId);
-          console.log('🔧 MultiPanelTabSidecar: Unregistered sidecar:', sidecarId);
         }
       });
     };

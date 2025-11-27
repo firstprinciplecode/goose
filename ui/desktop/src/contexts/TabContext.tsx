@@ -198,14 +198,7 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
   }, []); // Empty dependency array - only run once on mount
 
   const handleTabClick = useCallback((tabId: string) => {
-    console.log('🖱️ TabContext: handleTabClick called:', { 
-      clickedTabId: tabId, 
-      currentActiveTabId: activeTabId,
-      willChange: tabId !== activeTabId
-    });
-    console.log('🖱️ TabContext: About to call setActiveTabId with:', tabId);
     setActiveTabId(tabId);
-    console.log('🖱️ TabContext: setActiveTabId called');
   }, [activeTabId]);
 
   const handleNewTab = useCallback(async () => {
@@ -661,7 +654,6 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
 
   // Sidecar management functions
   const showSidecarView = useCallback((tabId: string, view: TabSidecarView) => {
-    console.log('🔧 TabContext: Showing sidecar view for tab:', tabId, 'view:', view.id);
     
     setTabStates(prev => prev.map(ts => {
       if (ts.tab.id !== tabId) return ts;
@@ -697,14 +689,12 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
   }, []);
 
   const hideSidecarView = useCallback((tabId: string, viewId: string) => {
-    console.log('🔧 TabContext: Hiding sidecar view for tab:', tabId, 'view:', viewId);
     
     // If this is a web viewer, trigger explicit cleanup
     const tabState = tabStates.find(ts => ts.tab.id === tabId);
     if (tabState?.tab.sidecarState) {
       const view = tabState.tab.sidecarState.views.find(v => v.id === viewId);
       if (view && view.contentType === 'web') {
-        console.log('🔧 TabContext: Triggering cleanup for web viewer:', viewId);
         // Dispatch a custom event to trigger WebBrowser cleanup
         window.dispatchEvent(new CustomEvent('sidecar-web-view-closing', { 
           detail: { tabId, viewId } 
@@ -729,7 +719,6 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
   }, [tabStates]);
 
   const hideAllSidecarViews = useCallback((tabId: string) => {
-    console.log('🔧 TabContext: Hiding all sidecar views for tab:', tabId);
     
     setTabStates(prev => prev.map(ts => {
       if (ts.tab.id !== tabId || !ts.tab.sidecarState) return ts;
@@ -837,7 +826,6 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
 
   // Open a Matrix chat in a new tab or switch to it if already open
   const openMatrixChat = useCallback(async (roomId: string, senderId: string) => {
-    console.log('📱 TabContext: Opening Matrix chat for room:', roomId, 'sender:', senderId);
 
     // Check if we already have a tab for this Matrix room
     const existingTabState = tabStates.find(ts => 

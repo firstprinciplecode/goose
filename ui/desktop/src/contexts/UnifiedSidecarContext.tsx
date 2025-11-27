@@ -3,7 +3,14 @@ import React, { createContext, useContext, useRef, useCallback, useEffect } from
 // Base interface for all sidecar types
 interface BaseSidecarInfo {
   id: string;
-  type: 'web-viewer' | 'file-viewer' | 'document-editor' | 'localhost-viewer' | 'app-installer' | 'diff-viewer';
+  type:
+    | 'web-viewer'
+    | 'file-viewer'
+    | 'document-editor'
+    | 'localhost-viewer'
+    | 'app-installer'
+    | 'diff-viewer'
+    | 'tool-output';
   title: string;
   timestamp: number;
 }
@@ -66,8 +73,21 @@ interface DiffViewerInfo extends BaseSidecarInfo {
   viewMode: 'split' | 'unified';
 }
 
+interface ToolOutputInfo extends BaseSidecarInfo {
+  type: 'tool-output';
+  toolName: string;
+  contentLength: number;
+}
+
 // Union type for all sidecar info types
-type SidecarInfo = WebViewerInfo | FileViewerInfo | DocumentEditorInfo | LocalhostViewerInfo | AppInstallerInfo | DiffViewerInfo;
+type SidecarInfo =
+  | WebViewerInfo
+  | FileViewerInfo
+  | DocumentEditorInfo
+  | LocalhostViewerInfo
+  | AppInstallerInfo
+  | DiffViewerInfo
+  | ToolOutputInfo;
 
 interface UnifiedSidecarContextType {
   registerSidecar: (info: SidecarInfo) => void;
@@ -119,67 +139,39 @@ export const UnifiedSidecarProvider: React.FC<UnifiedSidecarProviderProps> = ({ 
   const contextValueRef = useRef<UnifiedSidecarContextType & { contextId: string; version: number }>({} as any);
 
   const registerSidecar = useCallback((info: SidecarInfo) => {
-    console.log('🔧 UnifiedSidecarContext: Registering sidecar:', info.id, info.type, 'Context:', contextIdRef.current);
     activeSidecarsRef.current.set(info.id, { ...info, timestamp: Date.now() });
     contextVersionRef.current++;
-    
-    // Debug: Log current active sidecars
-    console.log('🔧 UnifiedSidecarContext: Active sidecars after registration:', 
-      Array.from(activeSidecarsRef.current.keys()));
   }, []);
 
   const updateSidecar = useCallback((id: string, updates: Partial<SidecarInfo>) => {
     const existing = activeSidecarsRef.current.get(id);
     if (existing) {
-      console.log('🔧 UnifiedSidecarContext: Updating sidecar:', id, updates, 'Context:', contextIdRef.current);
       activeSidecarsRef.current.set(id, { ...existing, ...updates, timestamp: Date.now() });
       contextVersionRef.current++;
-    } else {
-      console.warn('🔧 UnifiedSidecarContext: Attempted to update non-existent sidecar:', id);
     }
   }, []);
 
   const unregisterSidecar = useCallback((id: string) => {
     const existed = activeSidecarsRef.current.has(id);
-    console.log('🔧 UnifiedSidecarContext: Unregistering sidecar:', id, 'existed:', existed, 'Context:', contextIdRef.current);
     activeSidecarsRef.current.delete(id);
     if (existed) {
       contextVersionRef.current++;
     }
-    
-    // Debug: Log remaining active sidecars
-    console.log('🔧 UnifiedSidecarContext: Active sidecars after unregistration:', 
-      Array.from(activeSidecarsRef.current.keys()));
   }, []);
 
   const getActiveSidecars = useCallback((): SidecarInfo[] => {
-    const sidecars = Array.from(activeSidecarsRef.current.values());
-    console.log('🔧 UnifiedSidecarContext: getActiveSidecars called, returning:', sidecars.length, 'sidecars');
-    console.log('🔧 UnifiedSidecarContext: Active sidecars details:', 
-      sidecars.map(s => ({ 
-        id: s.id, 
-        type: s.type, 
-        title: s.title,
-        fileName: (s as any).fileName,
-        filePath: (s as any).filePath 
-      }))
-    );
-    return sidecars;
+    return Array.from(activeSidecarsRef.current.values());
   }, []);
 
   const getSidecarContext = useCallback((): string => {
     const sidecars = Array.from(activeSidecarsRef.current.values());
-    console.log('🔧 UnifiedSidecarContext: getSidecarContext called, found:', sidecars.length, 'sidecars', 
-      'Context:', contextIdRef.current, 'Version:', contextVersionRef.current);
     
     if (sidecars.length === 0) {
-      console.log('🔧 UnifiedSidecarContext: No sidecars found, returning empty context');
       return '';
     }
 
     // Sort by timestamp (most recent first)
     const sortedSidecars = sidecars.sort((a, b) => b.timestamp - a.timestamp);
-    console.log('🔧 UnifiedSidecarContext: Sorted sidecars:', sortedSidecars.map(s => ({ id: s.id, type: s.type, title: s.title })));
 
     let contextParts: string[] = [];
     
@@ -205,9 +197,7 @@ export const UnifiedSidecarProvider: React.FC<UnifiedSidecarProviderProps> = ({ 
     contextParts.push('Use this context to provide more relevant assistance based on the tools and content the user is actively working with. Reference specific files, URLs, or content when relevant to help the user with their current workflow.');
     contextParts.push('');
 
-    const finalContext = contextParts.join('\n');
-    console.log('🔧 UnifiedSidecarContext: Generated context length:', finalContext.length, 'chars');
-    return finalContext;
+    return contextParts.join('\n');
   }, []);
 
   // Initialize context value with versioning

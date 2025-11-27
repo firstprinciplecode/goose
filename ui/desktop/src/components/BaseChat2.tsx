@@ -212,21 +212,35 @@ function BaseChatContent({
     }
   };
 
-  // Track if this is the initial render for session resuming
-  const initialRenderRef = useRef(true);
+  const previousMessageCountRef = useRef(messages.length);
+  const hasInitialScrollRef = useRef(false);
 
-  // Auto-scroll when messages are loaded (for session resuming)
+  // Auto-scroll only when new messages arrive or we're still streaming
   const handleRenderingComplete = React.useCallback(() => {
-    // Only force scroll on the very first render
-    if (initialRenderRef.current && messages.length > 0) {
-      initialRenderRef.current = false;
-      if (scrollRef.current?.scrollToBottom) {
-        scrollRef.current.scrollToBottom();
-      }
-    } else if (scrollRef.current?.scrollToBottom) {
+    const hasNewMessage = messages.length > previousMessageCountRef.current;
+
+    if (hasNewMessage && scrollRef.current?.scrollToBottom) {
+      console.log('📜 BaseChat2: SCROLLING TO BOTTOM (new message detected)');
       scrollRef.current.scrollToBottom();
     }
+
+    previousMessageCountRef.current = messages.length;
   }, [messages.length]);
+
+  // Scroll to bottom once when entering a conversation that already has history
+  useEffect(() => {
+    if (!hasInitialScrollRef.current && messages.length > 0 && scrollRef.current?.scrollToBottom) {
+      hasInitialScrollRef.current = true;
+      requestAnimationFrame(() => {
+        console.log('📜 BaseChat2: Initial conversation scroll');
+        scrollRef.current?.scrollToBottom();
+      });
+    }
+  }, [messages.length]);
+
+  useEffect(() => {
+    hasInitialScrollRef.current = false;
+  }, [sessionId]);
 
   const toolCount = useToolCount(sessionId);
 
@@ -244,24 +258,6 @@ function BaseChatContent({
     window.addEventListener('scroll-chat-to-bottom', handleGlobalScrollRequest);
     return () => window.removeEventListener('scroll-chat-to-bottom', handleGlobalScrollRequest);
   }, []);
-
-  const renderProgressiveMessageList = (chat: ChatType) => (
-    <>
-      <ProgressiveMessageList
-        messages={messages as any}
-        chat={chat}
-        // toolCallNotifications={toolCallNotifications}
-        // appendMessage={(newMessage) => {
-        //   const updatedMessages = [...messages, newMessage];
-        //   setMessages(updatedMessages);
-        // }}
-        isUserMessage={(m: any) => m.role === 'user'}
-        isStreamingMessage={chatState !== ChatState.Idle}
-        // onMessageUpdate={onMessageUpdate}
-        onRenderingComplete={handleRenderingComplete}
-      />
-    </>
-  );
 
   // Use the showPopularTopics prop, but also check the current state
   const shouldShowPopularTopics = showPopularTopics && 
@@ -312,7 +308,6 @@ function BaseChatContent({
         <ScrollArea
           ref={scrollRef}
           className={`h-full relative ${contentClassName}`}
-          autoScroll
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           data-drop-zone="true"

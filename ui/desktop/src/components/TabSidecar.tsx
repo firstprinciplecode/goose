@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { X, SquareSplitHorizontal, BetweenHorizontalStart, FileDiff, Globe, FileText, Edit, Monitor } from 'lucide-react';
+import { X, SquareSplitHorizontal, BetweenHorizontalStart, FileDiff, Globe, FileText, Edit, Monitor, ScrollText } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/Tooltip';
 import { TabSidecarState } from './TabBar';
 import DocumentEditor from './DocumentEditor';
 import WebViewer from './WebViewer';
+import { LocalhostViewer } from './LocalhostViewer';
 import { useUnifiedSidecarContextOptional } from '../contexts/UnifiedSidecarContext';
+import ToolOutputCanvas from './ToolOutputCanvas';
 
 interface TabSidecarProps {
   sidecarState: TabSidecarState;
@@ -21,16 +23,6 @@ const MonacoDiffViewer: React.FC<{ diffContent: string }> = ({ diffContent }) =>
   </div>
 );
 
-const LocalhostViewer: React.FC<{ url: string; title: string }> = ({ url, title }) => (
-  <div className="h-full">
-    <iframe 
-      src={url} 
-      className="w-full h-full border-0" 
-      title={title}
-      sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-    />
-  </div>
-);
 
 const SimpleFileViewer: React.FC<{ path: string }> = ({ path }) => (
   <div className="h-full p-4 bg-background-default">
@@ -66,6 +58,8 @@ const renderIcon = (iconType: string) => {
       return <FileText size={16} />;
     case 'editor':
       return <Edit size={16} />;
+    case 'tool-output':
+      return <ScrollText size={16} />;
     default:
       return <FileText size={16} />;
   }
@@ -84,6 +78,15 @@ const renderContent = (contentType: string, contentProps: Record<string, any>, t
       return <SimpleFileViewer key={`file-${tabId}`} path={contentProps.path || ''} />;
     case 'editor':
       return <RichDocumentEditor key={`editor-${tabId}`} path={contentProps.path} content={contentProps.content} />;
+    case 'tool-output':
+      return (
+        <ToolOutputCanvas
+          key={`tool-output-${tabId}`}
+          content={contentProps.content || ''}
+          heading={contentProps.heading}
+          metadata={contentProps.metadata}
+        />
+      );
     default:
       return <div key={`unknown-${tabId}`} className="h-full p-4 bg-background-default">Unknown content type: {contentType}</div>;
   }
@@ -108,10 +111,9 @@ export const TabSidecar: React.FC<TabSidecarProps> = ({
       return;
     }
 
-    console.log('🔧 TabSidecar: Registering view with unified context:', currentView.id, currentView.contentType);
 
     // Create sidecar info based on content type
-    let sidecarInfo;
+    let sidecarInfo: Record<string, unknown> | undefined;
     const sidecarId = `tab-${tabId}-${currentView.id}`;
 
     switch (currentView.contentType) {
@@ -154,7 +156,6 @@ export const TabSidecar: React.FC<TabSidecarProps> = ({
       case 'web':
         // Note: WebBrowser component handles its own registration
         // Skip registration here to avoid duplicates
-        console.log('🔧 TabSidecar: Skipping web viewer registration (handled by WebBrowser component)');
         break;
 
       case 'file':
@@ -195,18 +196,27 @@ export const TabSidecar: React.FC<TabSidecarProps> = ({
           timestamp: Date.now(),
         };
         break;
+
+      case 'tool-output':
+        sidecarInfo = {
+          id: sidecarId,
+          type: 'tool-output' as const,
+          title: currentView.title || 'Tool Output',
+          timestamp: Date.now(),
+          toolName: currentView.fileName || currentView.title || 'tool',
+          contentLength: (currentView.contentProps.content || '').length,
+        };
+        break;
     }
 
     if (sidecarInfo) {
-      unifiedSidecarContext.registerSidecar(sidecarInfo);
-      console.log('🔧 TabSidecar: Registered sidecar:', sidecarInfo.id, sidecarInfo.type);
+      unifiedSidecarContext.registerSidecar(sidecarInfo as any);
     }
 
     // Cleanup: unregister when view changes or component unmounts
     return () => {
       if (sidecarInfo) {
         unifiedSidecarContext.unregisterSidecar(sidecarId);
-        console.log('🔧 TabSidecar: Unregistered sidecar:', sidecarId);
       }
     };
   }, [unifiedSidecarContext, currentView, tabId, viewMode]);
