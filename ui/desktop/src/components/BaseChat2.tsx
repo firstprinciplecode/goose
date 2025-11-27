@@ -109,6 +109,17 @@ function BaseChatContent({
     tabId, // Pass tabId for sidecar filtering
   });
 
+  // Auto-send @goose off for Matrix chats on initial load
+  const hasAutoDisabledGoose = useRef(false);
+  useEffect(() => {
+    if (matrixRoomId && !hasAutoDisabledGoose.current && messages.length === 0 && chatState === ChatState.Idle) {
+      console.log('📱 Auto-sending @goose off for Matrix chat');
+      hasAutoDisabledGoose.current = true;
+      // Send @goose off command automatically
+      streamHandleSubmit('@goose off');
+    }
+  }, [matrixRoomId, messages.length, chatState, streamHandleSubmit]);
+
   // Create append function for adding messages programmatically
   const append = useCallback((textOrMessage: string | Message) => {
     if (typeof textOrMessage === 'string') {
@@ -384,6 +395,7 @@ function BaseChatContent({
                       tabId={tabId}
                       onMessageUpdate={onMessageUpdate}
                       onRenderingComplete={handleRenderingComplete}
+                      tabId={tabId}
                       // Comment props
                       comments={commentState.comments}
                       activeSelection={commentState.activeSelection}
@@ -416,6 +428,7 @@ function BaseChatContent({
                         tabId={tabId}
                         onMessageUpdate={onMessageUpdate}
                         onRenderingComplete={handleRenderingComplete}
+                        tabId={tabId}
                         // Comment props
                         comments={commentState.comments}
                         activeSelection={commentState.activeSelection}
@@ -499,34 +512,34 @@ function BaseChatContent({
         <ChatInput
           sessionId={sessionId}
           handleSubmit={handleFormSubmit}
-            chatState={chatState}
-            onStop={stopStreaming}
-            commandHistory={commandHistory}
-            initialValue={initialPrompt}
-            setView={setView}
-            numTokens={tokenState?.totalTokens ?? session?.total_tokens ?? undefined}
-            inputTokens={
-              tokenState?.accumulatedInputTokens ?? session?.accumulated_input_tokens ?? undefined
-            }
-            outputTokens={
-              tokenState?.accumulatedOutputTokens ?? session?.accumulated_output_tokens ?? undefined
-            }
-            droppedFiles={droppedFiles}
-            onFilesProcessed={() => setDroppedFiles([])} // Clear dropped files after processing
-            messages={messages as any}
-            setMessages={() => {}} // Placeholder - useChatStream doesn't expose setMessages
-            disableAnimation={disableAnimation}
-            sessionCosts={sessionCosts}
-            setIsGoosehintsModalOpen={setIsGoosehintsModalOpen}
-            recipeConfig={recipe}
-            recipeAccepted={!hasNotAcceptedRecipe}
-            initialPrompt={initialPrompt}
-            toolCount={toolCount || 0}
-            autoSubmit={false}
-            append={append as any}
-            gooseEnabled={gooseEnabled}
-            {...customChatInputProps}
-          />
+          chatState={chatState}
+          onStop={stopStreaming}
+          commandHistory={commandHistory}
+          initialValue={initialPrompt}
+          setView={setView}
+          numTokens={tokenState?.totalTokens ?? session?.total_tokens ?? undefined}
+          inputTokens={
+            tokenState?.accumulatedInputTokens ?? session?.accumulated_input_tokens ?? undefined
+          }
+          outputTokens={
+            tokenState?.accumulatedOutputTokens ?? session?.accumulated_output_tokens ?? undefined
+          }
+          droppedFiles={droppedFiles}
+          onFilesProcessed={() => setDroppedFiles([])} // Clear dropped files after processing
+          messages={messages as any}
+          setMessages={() => {}} // Placeholder - useChatStream doesn't expose setMessages
+          disableAnimation={disableAnimation}
+          sessionCosts={sessionCosts}
+          setIsGoosehintsModalOpen={setIsGoosehintsModalOpen}
+          recipeConfig={recipe}
+          recipeAccepted={!hasNotAcceptedRecipe}
+          initialPrompt={initialPrompt}
+          toolCount={toolCount || 0}
+          autoSubmit={false}
+          append={append as any}
+          gooseEnabled={gooseEnabled}
+          {...customChatInputProps}
+        />
       </div>
 
       {recipe && (

@@ -5,6 +5,7 @@ import { TabSidecar } from './TabSidecar';
 import MultiPanelTabSidecar from './MultiPanelTabSidecar';
 import { useTabContext } from '../contexts/TabContext';
 import { ResizableSplitter } from './Layout/ResizableSplitter';
+import { TaskExecutionProvider } from '../contexts/TaskExecutionContext';
 
 interface TabbedChatContainerProps {
   setIsGoosehintsModalOpen?: (isOpen: boolean) => void;
@@ -215,22 +216,23 @@ export const TabbedChatContainer: React.FC<TabbedChatContainerProps> = ({
   }, []);
 
   return (
-    <div className={`flex flex-col h-full ${className || ''}`}>
-      {/* Tab Bar - Fixed at top */}
-      <div className="flex-shrink-0 relative z-[60]">
-        <TabBar
-          tabs={tabStates.map(ts => ts.tab)}
-          activeTabId={activeTabId}
-          onTabClick={handleTabClick}
-          onTabClose={handleTabClose}
-          onNewTab={handleNewTab}
-          sidebarCollapsed={sidebarCollapsed}
-          workingDirectory={workingDirectory}
-        />
-      </div>
+    <TaskExecutionProvider>
+      <div className={`flex flex-col h-full ${className || ''}`}>
+        {/* Tab Bar - Fixed at top */}
+        <div className="flex-shrink-0 relative z-[60]">
+          <TabBar
+            tabs={tabStates.map(ts => ts.tab)}
+            activeTabId={activeTabId}
+            onTabClick={handleTabClick}
+            onTabClose={handleTabClose}
+            onNewTab={handleNewTab}
+            sidebarCollapsed={sidebarCollapsed}
+            workingDirectory={workingDirectory}
+          />
+        </div>
 
-      {/* Main Content Area - Chat and Sidecar */}
-      <div className="flex-1 min-h-0 relative overflow-hidden rounded-t-lg">
+        {/* Main Content Area - Chat and Sidecar */}
+        <div className="flex-1 min-h-0 relative overflow-hidden rounded-t-lg">
         {/* Render all tabs but only show the active one - this prevents unmounting */}
         {tabStates.map((tabState) => {
           const isActive = tabState.tab.id === activeTabId;
@@ -314,6 +316,7 @@ export const TabbedChatContainer: React.FC<TabbedChatContainerProps> = ({
           );
         })}
       </div>
-    </div>
+      </div>
+    </TaskExecutionProvider>
   );
 };

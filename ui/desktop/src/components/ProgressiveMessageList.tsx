@@ -255,6 +255,7 @@ export default function ProgressiveMessageList({
                       index === messagesToRender.length - 1 &&
                       message.role === 'assistant'
                     }
+                    tabId={tabId}
                     // Comment props - use same unique ID logic as GooseMessage
                     comments={(() => {
                       // Generate the same unique ID that GooseMessage uses
@@ -298,6 +299,7 @@ export default function ProgressiveMessageList({
     isStreamingMessage,
     onMessageUpdate,
     hasCompactionMarker,
+    tabId,
     // Comment dependencies
     comments,
     activeSelection,
