@@ -505,9 +505,63 @@
 }
 
 body {
+  /* Default background from theme */
   background: var(--background-app);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Custom background support - set via CSS custom properties or inline styles */
+body.custom-background {
+  background-color: var(--custom-bg-color, transparent);
+  background-image: var(--custom-bg-image, none);
+  background-size: var(--custom-bg-size, cover);
+  background-position: var(--custom-bg-position, center);
+  background-repeat: var(--custom-bg-repeat, no-repeat);
+  background-attachment: var(--custom-bg-attachment, fixed);
+}
+
+/* When using a custom background image, add a subtle overlay for readability */
+body.custom-background::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--custom-bg-overlay, rgba(0, 0, 0, 0.3));
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Preset background styles */
+body.bg-preset-stars {
+  background: 
+    radial-gradient(2px 2px at 20px 30px, rgba(255,255,255,0.3), transparent),
+    radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1px 1px at 90px 40px, rgba(255,255,255,0.4), transparent),
+    radial-gradient(2px 2px at 130px 80px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1px 1px at 160px 120px, rgba(255,255,255,0.3), transparent),
+    var(--background-app);
+  background-size: 200px 200px, 200px 200px, 200px 200px, 200px 200px, 200px 200px, 100% 100%;
+}
+
+body.bg-preset-aurora {
+  background: 
+    linear-gradient(135deg, rgba(17, 24, 39, 0.95) 0%, rgba(88, 28, 135, 0.3) 50%, rgba(15, 23, 42, 0.95) 100%),
+    var(--background-app);
+}
+
+body.bg-preset-sunset {
+  background: 
+    linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(88, 28, 135, 0.4) 40%, rgba(194, 65, 12, 0.3) 70%, rgba(15, 23, 42, 0.95) 100%),
+    var(--background-app);
+}
+
+body.bg-preset-ocean {
+  background: 
+    linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(6, 78, 59, 0.4) 50%, rgba(15, 23, 42, 0.95) 100%),
+    var(--background-app);
 }
 
 .word-break {

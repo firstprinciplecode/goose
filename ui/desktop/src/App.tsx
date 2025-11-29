@@ -38,6 +38,7 @@ import { ModelAndProviderProvider } from './components/ModelAndProviderContext';
 import PermissionSettingsView from './components/settings/permission/PermissionSetting';
 import { MatrixProvider } from './contexts/MatrixContext';
 import { matrixService } from './services/MatrixService';
+import { BackgroundProvider } from './contexts/BackgroundContext';
 import CollaborationInviteNotification from './components/CollaborationInviteNotification';
 import MessageNotification from './components/MessageNotification';
 
@@ -695,18 +696,20 @@ export function AppInner() {
 export default function App() {
   return (
     <ConfigProvider>
-      <DraftProvider>
-        <ModelAndProviderProvider>
-          <MatrixProvider matrixService={matrixService}>
-            <TabProvider>
-              <HashRouter>
-                <AppInner />
-              </HashRouter>
-              <AnnouncementModal />
-            </TabProvider>
-          </MatrixProvider>
-        </ModelAndProviderProvider>
-      </DraftProvider>
+      <BackgroundProvider>
+        <DraftProvider>
+          <ModelAndProviderProvider>
+            <MatrixProvider matrixService={matrixService}>
+              <TabProvider>
+                <HashRouter>
+                  <AppInner />
+                </HashRouter>
+                <AnnouncementModal />
+              </TabProvider>
+            </MatrixProvider>
+          </ModelAndProviderProvider>
+        </DraftProvider>
+      </BackgroundProvider>
     </ConfigProvider>
   );
 }

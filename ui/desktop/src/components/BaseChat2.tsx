@@ -395,7 +395,6 @@ function BaseChatContent({
                       tabId={tabId}
                       onMessageUpdate={onMessageUpdate}
                       onRenderingComplete={handleRenderingComplete}
-                      tabId={tabId}
                       // Comment props
                       comments={commentState.comments}
                       activeSelection={commentState.activeSelection}
@@ -428,7 +427,6 @@ function BaseChatContent({
                         tabId={tabId}
                         onMessageUpdate={onMessageUpdate}
                         onRenderingComplete={handleRenderingComplete}
-                        tabId={tabId}
                         // Comment props
                         comments={commentState.comments}
                         activeSelection={commentState.activeSelection}

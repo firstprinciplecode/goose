@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import ThemeSelector from '../../GooseSidebar/ThemeSelector';
 import BlockLogoBlack from './icons/block-lockup_black.png';
 import BlockLogoWhite from './icons/block-lockup_white.png';
+import BackgroundSection from '../appearance/BackgroundSection';
 
 interface AppSettingsSectionProps {
   scrollToSection?: string;
@@ -391,6 +392,16 @@ export default function AppSettingsSection({ scrollToSection }: AppSettingsSecti
         </CardHeader>
         <CardContent className="pt-4 px-4">
           <ThemeSelector className="w-auto" hideTitle horizontal />
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-lg">
+        <CardHeader className="pb-0">
+          <CardTitle className="mb-1">Background</CardTitle>
+          <CardDescription>Customize the app background with presets or images</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4 px-4">
+          <BackgroundSection />
         </CardContent>
       </Card>
 
