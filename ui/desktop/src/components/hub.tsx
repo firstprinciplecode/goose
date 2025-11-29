@@ -91,7 +91,11 @@ const NodeMatrixBackground: React.FC = () => {
         // Draw node
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.size, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(156, 163, 175, 0.4)'; // text-muted color with low opacity
+        // Use CSS variable for background color with 80% opacity
+        const bgColor = getComputedStyle(canvas).getPropertyValue('--background-default').trim() || '#ffffff';
+        ctx.fillStyle = bgColor.startsWith('#') 
+          ? `${bgColor}CC` // Add 80% opacity (CC in hex)
+          : bgColor.replace('rgb', 'rgba').replace(')', ', 0.8)');
         ctx.fill();
 
         // Draw connections
@@ -106,7 +110,10 @@ const NodeMatrixBackground: React.FC = () => {
             ctx.beginPath();
             ctx.moveTo(node.x, node.y);
             ctx.lineTo(otherNode.x, otherNode.y);
-            ctx.strokeStyle = `rgba(156, 163, 175, ${opacity})`;
+            // Use the same background color for connections
+            ctx.strokeStyle = bgColor.startsWith('#')
+              ? `${bgColor}${Math.round(opacity * 255).toString(16).padStart(2, '0')}`
+              : bgColor.replace('rgb', 'rgba').replace(')', `, ${opacity})`);
             ctx.lineWidth = 0.5;
             ctx.stroke();
           }
@@ -145,6 +152,42 @@ export default function Hub({
 }) {
   const location = useLocation();
   const { isConnected, friends } = useMatrix();
+  const [backgroundImage, setBackgroundImage] = React.useState<string | null>(null);
+  const [showText, setShowText] = React.useState(true);
+  const [blurOpacity, setBlurOpacity] = React.useState(1);
+
+  // Load background image from localStorage
+  useEffect(() => {
+    const loadBackgroundImage = () => {
+      const stored = localStorage.getItem('home_background_image');
+      setBackgroundImage(stored);
+    };
+
+    // Load on mount
+    loadBackgroundImage();
+
+    // Listen for updates from settings
+    const handleBackgroundUpdate = () => {
+      loadBackgroundImage();
+    };
+
+    window.addEventListener('background-image-updated', handleBackgroundUpdate);
+    return () => {
+      window.removeEventListener('background-image-updated', handleBackgroundUpdate);
+    };
+  }, []);
+
+  // Fade out blur when text disappears after 5 seconds
+  useEffect(() => {
+    const hideTextTimer = setTimeout(() => {
+      setShowText(false);
+      setBlurOpacity(0); // Fade out blur when text disappears
+    }, 5000);
+
+    return () => {
+      clearTimeout(hideTextTimer);
+    };
+  }, []);
 
   // Check if we're in Matrix chat mode
   const routeState = location.state as ViewOptions | undefined;
@@ -268,7 +311,30 @@ export default function Hub({
 
   return (
     <ContextManagerProvider>
-      <div className="relative flex flex-col h-full">
+      <div className="relative flex flex-col h-full rounded-t-2xl overflow-hidden">
+        {/* Background Image - Behind everything */}
+        {backgroundImage && (
+          <>
+            <div 
+              className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+              style={{ 
+                backgroundImage: `url(${backgroundImage})`,
+                zIndex: 0
+              }}
+            />
+            {/* Radial blur overlay - creates pixelated blur in center with animation */}
+            <div 
+              className="absolute inset-0 backdrop-blur-md transition-opacity duration-1000"
+              style={{ 
+                maskImage: 'radial-gradient(circle at center, black 0%, black 30%, transparent 50%)',
+                WebkitMaskImage: 'radial-gradient(circle at center, black 0%, black 30%, transparent 50%)',
+                opacity: blurOpacity,
+                zIndex: 0
+              }}
+            />
+          </>
+        )}
+        
         {/* Animated Node Matrix Background */}
         <NodeMatrixBackground />
         
@@ -276,14 +342,23 @@ export default function Hub({
         <div className="relative flex-1 flex items-center justify-center p-8" style={{ zIndex: 10 }}>
           <div className="w-full max-w-4xl flex flex-col items-center">
             {/* Greeting above the input */}
-            <div className="text-center mb-8">
+            <div className={`text-center transition-all duration-1000 ${showText ? 'mb-8' : 'mb-4'}`}>
               <div className="origin-center mb-6 goose-icon-animation">
                 <Goose className="size-12 mx-auto" />
               </div>
-              <Greeting className="text-4xl font-light text-text-default mb-4" />
-              <p className="text-text-muted text-lg">
-                Start a new conversation to get help with your projects
-              </p>
+              <div 
+                className="transition-all duration-1000 overflow-hidden"
+                style={{ 
+                  opacity: showText ? 1 : 0,
+                  maxHeight: showText ? '200px' : '0px',
+                  marginBottom: showText ? '0px' : '0px'
+                }}
+              >
+                <Greeting className="text-4xl font-light text-text-default mb-4" />
+                <p className="text-text-default text-lg">
+                  Start a new conversation to get help with your projects
+                </p>
+              </div>
             </div>
 
             {/* Chat Input */}
