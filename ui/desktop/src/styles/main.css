@@ -578,6 +578,20 @@ body.bg-preset-ocean {
   top: 0;
   left: 0;
   z-index: 50;
+  /* Leave space for sidebar toggle button on the left */
+  pointer-events: none;
+}
+
+/* Re-enable pointer events for the actual drag area, but not over sidebar toggle */
+.titlebar-drag-region::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 70px; /* Start after sidebar toggle button (20px + 50px button area) */
+  right: 0;
+  bottom: 0;
+  -webkit-app-region: drag;
+  pointer-events: auto;
 }
 
 .no-drag {
@@ -863,39 +877,39 @@ p > code.bg-inline-code {
   mix-blend-mode: multiply; /* Blend with background for better visibility */
 }
 
-/* Chat composer with proper backdrop blur - Force rebuild */
+/* Chat composer with proper backdrop blur - using filter: blur(0) trick for resize stability */
 .chat-composer-container {
-  background-color: rgba(255, 255, 255, 0.9) !important;
+  background-color: rgba(255, 255, 255, 0.3) !important;
   backdrop-filter: blur(24px) !important;
   -webkit-backdrop-filter: blur(24px) !important;
-  border: 1px solid rgba(60, 60, 67, 0.18);
-  box-shadow: 0px 30px 70px rgba(4, 5, 45, 0.18);
-  will-change: backdrop-filter;
-  isolation: isolate;
-  position: relative;
-  z-index: 1;
+  filter: blur(0) !important; /* Critical: prevents backdrop-filter from disappearing on resize */
+  transform: translateZ(0) !important; /* Force GPU layer */
+  -webkit-transform: translateZ(0) !important;
+  will-change: backdrop-filter, transform !important;
+  isolation: isolate !important;
+  position: relative !important;
+  z-index: 50 !important;
 }
 
 .dark .chat-composer-container {
-  background-color: rgba(15, 15, 16, 0.9) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0px 30px 70px rgba(0, 0, 0, 0.5);
+  background-color: rgba(0, 0, 0, 0.3) !important;
 }
 
 /* ParticipantsBar with same styling as chat composer */
 .participants-bar-container {
-  background-color: rgba(255, 255, 255, 0.9) !important;
+  background-color: rgba(255, 255, 255, 0.3) !important;
   backdrop-filter: blur(24px) !important;
   -webkit-backdrop-filter: blur(24px) !important;
-  border-bottom: 1px solid rgba(60, 60, 67, 0.18);
-  will-change: backdrop-filter;
-  isolation: isolate;
-  position: relative;
-  z-index: 50;
+  filter: blur(0) !important; /* Critical: prevents backdrop-filter from disappearing on resize */
+  transform: translateZ(0) !important; /* Force GPU layer */
+  -webkit-transform: translateZ(0) !important;
+  will-change: backdrop-filter, transform !important;
+  isolation: isolate !important;
+  position: relative !important;
+  z-index: 50 !important;
 }
 
 .dark .participants-bar-container {
-  background-color: rgba(15, 15, 16, 0.9) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: rgba(0, 0, 0, 0.3) !important;
 }
 

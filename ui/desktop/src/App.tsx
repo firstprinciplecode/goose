@@ -46,6 +46,7 @@ import ExtensionsView, { ExtensionsViewOptions } from './components/extensions/E
 import RecipesView from './components/recipes/RecipesView';
 import RecipeEditor from './components/recipes/RecipeEditor';
 import PeersView from './components/peers/PeersView';
+import ChannelsView from './components/channels/ChannelsView';
 import { createNavigationHandler, View, ViewOptions } from './utils/navigationUtils';
 import {
   AgentState,
@@ -317,6 +318,11 @@ const ExtensionsRoute = () => {
 const PeersRoute = () => {
   const navigate = useNavigate();
   return <PeersView onClose={() => navigate('/')} />;
+};
+
+const ChannelsRoute = () => {
+  const navigate = useNavigate();
+  return <ChannelsView onClose={() => navigate('/')} />;
 };
 
 export function AppInner() {
@@ -662,6 +668,7 @@ export function AppInner() {
             <Route path="settings" element={<SettingsRoute />} />
             <Route path="extensions" element={<ExtensionsRoute />} />
             <Route path="peers" element={<PeersRoute />} />
+            <Route path="channels" element={<ChannelsRoute />} />
             <Route path="sessions" element={<SessionsRoute />} />
             <Route path="schedules" element={<SchedulesRoute />} />
             <Route path="recipes" element={<RecipesView />} />
@@ -696,18 +703,18 @@ export default function App() {
   return (
     <ConfigProvider>
       <BackgroundProvider>
-        <DraftProvider>
-          <ModelAndProviderProvider>
-            <MatrixProvider matrixService={matrixService}>
-              <TabProvider>
-                <HashRouter>
-                  <AppInner />
-                </HashRouter>
-                <AnnouncementModal />
-              </TabProvider>
-            </MatrixProvider>
-          </ModelAndProviderProvider>
-        </DraftProvider>
+          <DraftProvider>
+            <ModelAndProviderProvider>
+              <MatrixProvider matrixService={matrixService}>
+                <TabProvider>
+                  <HashRouter>
+                    <AppInner />
+                  </HashRouter>
+                  <AnnouncementModal />
+                </TabProvider>
+              </MatrixProvider>
+            </ModelAndProviderProvider>
+          </DraftProvider>
       </BackgroundProvider>
     </ConfigProvider>
   );

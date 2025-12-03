@@ -930,12 +930,12 @@ const PeersView: React.FC<PeersViewProps> = ({ onClose }) => {
   }
 
   return (
-    <div className="relative flex flex-col h-screen bg-background-muted">
+    <div className="relative flex flex-col h-screen">
 
 
       {/* Current User Info */}
       {currentUser && (
-        <div className="pt-14 pb-4 px-4 mb-0.5 bg-background-default rounded-2xl">
+        <div className="pt-14 pb-4 px-4 mb-0.5 bg-white/60 dark:bg-black/60 backdrop-blur-xl rounded-2xl">
           <div className="flex items-end gap-3">
             <button
               onClick={() => {

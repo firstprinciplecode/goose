@@ -169,10 +169,10 @@ export const TabBar: React.FC<TabBarProps> = ({
   return (
     <div className={cn(
       "flex items-center",
-      "min-h-[48px] gap-2 overflow-x-auto tab-bar-container",
+      "min-h-[36px] gap-1.5 overflow-x-auto tab-bar-container py-1",
       "transition-all duration-200", 
       // Adjust padding based on sidebar state - extra left padding when sidebar is collapsed for macOS stoplight buttons
-      sidebarCollapsed ? "pl-20 pr-3" : "px-3",
+      sidebarCollapsed ? "pl-3 pr-3" : "px-3",
       className
     )}>
       {/* Tabs */}
@@ -180,40 +180,43 @@ export const TabBar: React.FC<TabBarProps> = ({
         <TabTooltip key={tab.id} tab={tab} workingDirectory={workingDirectory}>
           <button
             className={cn(
-              "h-8 cursor-pointer no-drag border-0 rounded-2xl flex items-center",
-              "w-[160px] group relative tab-item",
-              "transition-none",
-              // Light theme: lighter gray background, Dark theme: very dark background
-              "bg-zinc-200/90 dark:bg-[#1a1a1f]/90"
+              "h-7 cursor-pointer no-drag border-0 rounded-2xl flex items-center",
+              "w-36 group relative tab-item",
+              "transition-colors duration-200",
+              // Selected tab: darker background with blur
+              tab.isActive
+                ? "bg-zinc-900 dark:bg-zinc-900 backdrop-blur-xl"
+                // Unselected tabs: slightly transparent with blur
+                : "bg-neutral-900/70 dark:bg-neutral-900/70 backdrop-blur-[10px] hover:bg-neutral-800/80"
             )}
             onClick={() => onTabClick(tab.id)}
           >
             {/* Tab Title - with explicit padding */}
             <div className="flex-1 min-w-0 pl-3">
               <span className={cn(
-                "truncate text-xs font-normal block pointer-events-none text-left transition-colors duration-200",
+                "truncate text-xs font-medium block pointer-events-none text-left",
                 tab.isActive
-                  // Light theme: dark text when active, Dark theme: white text when active
-                  ? "text-zinc-900 dark:text-white"
-                  // Light theme: medium gray inactive. Dark theme: dark gray inactive, hover to white
-                  : "text-zinc-500 dark:text-zinc-500 group-hover:text-zinc-900 dark:group-hover:text-white"
+                  // Selected: white text
+                  ? "text-white"
+                  // Unselected: gray text (Inactive-Menu color)
+                  : "text-zinc-500 group-hover:text-zinc-300"
               )}>
                 {getTabTitle(tab)}
               </span>
             </div>
 
             {/* Close Button - Always reserve space, only show icon when active */}
-            <div className="flex-shrink-0 w-3 pr-3 flex items-center justify-center">
+            <div className="flex-shrink-0 w-5 pr-2 flex items-center justify-center">
               {tab.isActive && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onTabClose(tab.id);
                   }}
-                  className="flex items-center justify-center tab-close-button pointer-events-auto"
+                  className="flex items-center justify-center tab-close-button pointer-events-auto opacity-70 hover:opacity-100"
                   title="Close tab"
                 >
-                  <X className="w-3 h-3 text-zinc-900 dark:text-white" />
+                  <X className="w-3 h-3 text-white" />
                 </button>
               )}
             </div>
@@ -221,17 +224,18 @@ export const TabBar: React.FC<TabBarProps> = ({
         </TabTooltip>
       ))}
 
-      {/* New Tab Button */}
+      {/* New Tab Button - matches tab styling */}
       <button
         onClick={onNewTab}
         className={cn(
-          "flex items-center justify-center w-8 h-8 rounded-2xl",
-          "bg-zinc-200/90 dark:bg-[#1a1a1f]/90 hover:bg-zinc-300 dark:hover:bg-[#25252a]/90 transition-all duration-200",
-          "text-zinc-700 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+          "flex items-center justify-center w-7 h-7 rounded-2xl",
+          "bg-neutral-900/70 dark:bg-neutral-900/70 backdrop-blur-[10px]",
+          "hover:bg-neutral-800/80 transition-colors duration-200",
+          "text-zinc-500 hover:text-zinc-300"
         )}
         title="New tab (Ctrl+T)"
       >
-        <Plus className="w-4 h-4" />
+        <Plus className="w-3.5 h-3.5" />
       </button>
 
       {/* Spacer to push content left */}

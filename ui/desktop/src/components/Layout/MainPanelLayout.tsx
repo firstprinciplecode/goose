@@ -54,7 +54,7 @@ export const MainPanelLayout: React.FC<{
   children: React.ReactNode;
   removeTopPadding?: boolean;
   backgroundColor?: string;
-}> = ({ children, removeTopPadding = false, backgroundColor = 'bg-background-default' }) => {
+}> = ({ children, removeTopPadding = false, backgroundColor = '' }) => {
   
   // Simplified state - just track if we have a bento box and what's in it
   const [hasBentoBox, setHasBentoBox] = useState(false);

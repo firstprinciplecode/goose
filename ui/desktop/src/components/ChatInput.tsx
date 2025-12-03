@@ -2052,6 +2052,20 @@ export default function ChatInput({
     !agentIsReady ||
     isExtensionsLoading;
 
+  // Debug logging for submit button state
+  console.log('🔘 Submit button state:', {
+    isSubmitButtonDisabled,
+    hasSubmittableContent,
+    displayValueTrimmed: displayValue.trim().length > 0,
+    isAnyImageLoading,
+    isAnyDroppedFileLoading,
+    isRecording,
+    isTranscribing,
+    isCompacting,
+    agentIsReady,
+    isExtensionsLoading,
+  });
+
   const isUserInputDisabled =
     isAnyImageLoading ||
     isAnyDroppedFileLoading ||
@@ -2141,10 +2155,9 @@ export default function ChatInput({
     >
       <div id="mention-popover-zone" className="absolute -top-24 left-0 right-0 z-50 h-24 bg-transparent pointer-events-none" />
 
-      <div className="px-6">
-        <div className="max-w-4xl mx-auto w-full space-y-4">
+      <div className="w-full max-w-4xl mx-auto space-y-4 px-6">
         {!gooseEnabled && (
-          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-2 flex items-center gap-2">
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl px-4 py-2 flex items-center gap-2 backdrop-blur-xl">
             <span className="inline-flex w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
             <span className="text-yellow-600 dark:text-yellow-400 text-sm font-medium">
               Goose is OFF — type <code className="px-1.5 py-0.5 bg-yellow-500/20 rounded text-xs">@goose</code> to reactivate
@@ -2152,7 +2165,7 @@ export default function ChatInput({
           </div>
         )}
 
-        <div className="chat-composer-container rounded-3xl overflow-hidden transform-gpu">
+        <div className="chat-composer-container rounded-3xl">
           {queuedMessages.length > 0 && (
             <MessageQueue
               queuedMessages={queuedMessages}
@@ -2223,7 +2236,7 @@ export default function ChatInput({
                       <button
                         ref={plusButtonRef}
                         type="button"
-                        className="w-8 h-8 rounded-full border border-zinc-200 dark:border-zinc-800 flex items-center justify-center bg-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                        className="w-8 h-8 rounded-full border border-zinc-400 dark:border-zinc-500 flex items-center justify-center bg-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
                       >
                         <Plus className="w-5 h-5" />
                       </button>
@@ -2361,7 +2374,7 @@ export default function ChatInput({
                 <div className="flex items-center gap-2 flex-wrap justify-end">
                   {/* Model Selector Pill */}
                   <div className="relative" ref={dropdownRef}>
-                    <div className="hidden md:inline-flex h-8 px-2 rounded-2xl border border-black/10 dark:border-white/10 items-center justify-center bg-transparent transition-colors hover:bg-black/5 dark:hover:bg-white/5">
+                    <div className="hidden md:inline-flex h-8 px-2 rounded-2xl border border-zinc-400 dark:border-zinc-500 items-center justify-center bg-transparent transition-colors hover:bg-black/5 dark:hover:bg-white/5">
                        <ModelsBottomBar
                           sessionId={sessionId}
                           dropdownRef={dropdownRef}
@@ -2412,60 +2425,11 @@ export default function ChatInput({
                     </div>
                   </div>
 
-                  {dictationSettings?.enabled && (
-                    !canUseDictation ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled
-                              className="w-8 h-8 rounded-full border border-white/60 dark:border-zinc-800 flex items-center justify-center bg-transparent text-[#3C3C43]/40 dark:text-white/30 cursor-not-allowed"
-                            >
-                              <Mic className="w-4 h-4" />
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {dictationSettings.provider === 'openai'
-                            ? 'Configure an OpenAI API key in Settings → Models.'
-                            : dictationSettings.provider === 'elevenlabs'
-                              ? 'Configure an ElevenLabs API key in Settings → Chat → Voice Dictation.'
-                              : 'Dictation provider is not fully configured.'}
-                        </TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        disabled={isTranscribing}
-                        onClick={() => (isRecording ? stopRecording() : startRecording())}
-                        className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all ${
-                          isRecording
-                            ? 'border-red-500 bg-red-500 text-white'
-                            : 'border-zinc-200 dark:border-zinc-800 bg-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
-                        }`}
-                      >
-                        {/* Using Mic icon instead of waveform to match the "simple icon" aesthetic of the snippet, although snippet had a waveform-ish icon */}
-                         <div className="w-4 h-4 flex items-center justify-center">
-                            {isRecording ? (
-                                <div className="w-2 h-2 bg-white rounded-sm animate-pulse" />
-                            ) : (
-                                <Mic className="w-4 h-4" />
-                            )}
-                         </div>
-                      </Button>
-                    )
-                  )}
-
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        className="w-8 h-8 rounded-full border border-zinc-200 dark:border-zinc-800 bg-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 flex items-center justify-center transition-colors"
+                        className="w-8 h-8 rounded-full border border-zinc-400 dark:border-zinc-500 bg-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 flex items-center justify-center transition-colors"
                       >
                         <MoreHorizontal className="w-4 h-4" />
                       </button>
@@ -2537,6 +2501,55 @@ export default function ChatInput({
                     </DropdownMenuContent>
                   </DropdownMenu>
 
+                  {/* Voice/Mic button - moved next to send */}
+                  {dictationSettings?.enabled && (
+                    !canUseDictation ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled
+                              className="w-8 h-8 rounded-full border border-zinc-400 dark:border-zinc-500 flex items-center justify-center bg-transparent text-zinc-500 dark:text-zinc-400 cursor-not-allowed opacity-50"
+                            >
+                              <Mic className="w-4 h-4" />
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {dictationSettings.provider === 'openai'
+                            ? 'Configure an OpenAI API key in Settings → Models.'
+                            : dictationSettings.provider === 'elevenlabs'
+                              ? 'Configure an ElevenLabs API key in Settings → Chat → Voice Dictation.'
+                              : 'Dictation provider is not fully configured.'}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        disabled={isTranscribing}
+                        onClick={() => (isRecording ? stopRecording() : startRecording())}
+                        className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all ${
+                          isRecording
+                            ? 'border-red-500 bg-red-500 text-white'
+                            : 'border-zinc-400 dark:border-zinc-500 bg-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
+                        }`}
+                      >
+                        <div className="w-4 h-4 flex items-center justify-center">
+                          {isRecording ? (
+                            <div className="w-2 h-2 bg-white rounded-sm animate-pulse" />
+                          ) : (
+                            <Mic className="w-4 h-4" />
+                          )}
+                        </div>
+                      </Button>
+                    )
+                  )}
+
                   {isLoading ? (
                     <Button
                       type="button"
@@ -2556,14 +2569,9 @@ export default function ChatInput({
                             size="sm"
                             variant="ghost"
                             disabled={isSubmitButtonDisabled}
-                            className={`rounded-full w-8 h-8 !p-0 flex items-center justify-center shadow-lg transition-all ${
-                              isSubmitButtonDisabled
-                                ? 'bg-zinc-100 text-zinc-300 dark:bg-zinc-800 dark:text-zinc-600 cursor-not-allowed'
-                                : 'bg-neutral-900 text-white dark:bg-white dark:text-black hover:opacity-90'
-                            }`}
+                            className="rounded-full w-8 h-8 !p-0 flex items-center justify-center transition-all bg-black text-white dark:bg-white dark:text-black hover:opacity-80 disabled:opacity-100 disabled:cursor-not-allowed"
                           >
-                            {/* Send arrow icon similar to design */}
-                             <ArrowUp className="w-4 h-4" />
+                            <ArrowUp className="w-4 h-4" />
                           </Button>
                         </span>
                       </TooltipTrigger>
@@ -2692,7 +2700,6 @@ export default function ChatInput({
 
         <div className="text-xs text-[#3C3C43]/70 dark:text-zinc-400 flex items-center gap-2 px-1">
           {/* Workspace removed as per request - moved to Tab tooltip */}
-        </div>
         </div>
       </div>
 

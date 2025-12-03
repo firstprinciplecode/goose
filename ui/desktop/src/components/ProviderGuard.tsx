@@ -242,7 +242,7 @@ export default function ProviderGuard({ didSelectProvider, children }: ProviderG
 
   if (showOllamaSetup) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 bg-background-default">
+      <div className="min-h-screen w-full flex flex-col items-center justify-center p-4">
         <div className="max-w-md w-full mx-auto p-8">
           <div className="mb-8 text-center">
             <WelcomeGooseLogo />
@@ -266,7 +266,7 @@ export default function ProviderGuard({ didSelectProvider, children }: ProviderG
 
   if (showFirstTimeSetup) {
     return (
-      <div className="h-screen w-full bg-background-default overflow-hidden">
+      <div className="h-screen w-full overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="min-h-full flex flex-col items-center justify-center p-4 py-8">
             <div className="max-w-lg w-full mx-auto p-8">

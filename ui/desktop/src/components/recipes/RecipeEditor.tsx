@@ -387,7 +387,7 @@ export default function RecipeEditor({ config }: RecipeEditorProps) {
   }
 
   return (
-    <div className="flex flex-col w-full h-screen bg-background-default">
+    <div className="flex flex-col w-full h-screen">
       {activeSection === 'none' && (
         <div className="flex flex-col items-center mb-2 px-6 pt-10">
           <div className="w-16 h-16 bg-background-default rounded-full flex items-center justify-center mb-4">

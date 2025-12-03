@@ -898,7 +898,7 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(
         <div className="space-y-8">
           {dateGroups.map((group) => (
             <div key={group.label} className="space-y-4">
-              <div className="sticky top-0 z-10 bg-background-default/95 backdrop-blur-sm">
+              <div className="sticky top-0 z-10 backdrop-blur-sm">
                 <h2 className="text-text-muted">{group.label}</h2>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
@@ -921,7 +921,7 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(
       <>
         <MainPanelLayout>
           <div className="flex-1 flex flex-col min-h-0">
-            <div className="bg-background-default px-8 pb-8 pt-16">
+            <div className="px-8 pb-8 pt-16">
               <div className="flex flex-col page-transition">
                 <div className="flex justify-between items-center mb-1">
                   <h1 className="text-4xl font-light">Chat history</h1>

@@ -7,6 +7,9 @@ import { useTabContext } from '../contexts/TabContext';
 import { ResizableSplitter } from './Layout/ResizableSplitter';
 import { TaskExecutionProvider } from '../contexts/TaskExecutionContext';
 
+// Import SVG icons
+import BellIcon from '../assets/bell.svg';
+
 interface TabbedChatContainerProps {
   setIsGoosehintsModalOpen?: (isOpen: boolean) => void;
   onMessageSubmit?: (message: string, tabId: string) => void;
@@ -218,7 +221,26 @@ export const TabbedChatContainer: React.FC<TabbedChatContainerProps> = ({
   return (
     <TaskExecutionProvider>
       <div className={`flex flex-col h-full ${className || ''}`}>
-        {/* Tab Bar - Fixed at top */}
+        {/* Row 1: Top Bar - Traffic lights spacer + blur bar + notifications */}
+        <div className="flex-shrink-0 h-11 flex items-center relative z-[60]">
+          {/* Spacer to account for traffic lights + drawer icon */}
+          <div className="w-[140px] flex-shrink-0" />
+          
+          {/* Top blur bar - spans most of the width */}
+          <div className="flex-1 h-9 mx-2 bg-white/60 dark:bg-black/60 rounded-2xl backdrop-blur-xl flex items-center px-4">
+            {/* Future: Add top bar content here (search, breadcrumbs, etc.) */}
+          </div>
+          
+          {/* Bell notification icon - right side */}
+          <button 
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 dark:hover:bg-white/10 transition-colors mr-2"
+            title="Notifications"
+          >
+            <img src={BellIcon} alt="Notifications" className="w-[18px] h-[18px] opacity-60 hover:opacity-100 transition-opacity" />
+          </button>
+        </div>
+
+        {/* Row 2: Tab Bar */}
         <div className="flex-shrink-0 relative z-[60]">
           <TabBar
             tabs={tabStates.map(ts => ts.tab)}

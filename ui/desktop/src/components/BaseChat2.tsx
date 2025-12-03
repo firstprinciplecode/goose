@@ -314,7 +314,7 @@ function BaseChatContent({
       {/* Custom header */}
       {renderHeader && renderHeader()}
 
-      {/* Chat container - full height, extends behind floating input */}
+      {/* Chat container - extends behind floating input */}
       <div className="absolute inset-0">
         <ScrollArea
           ref={scrollRef}
@@ -332,8 +332,8 @@ function BaseChatContent({
             </div>
           )}
           
-          {/* Chat thread container with max width */}
-          <div className="max-w-4xl mx-auto w-full">
+          {/* Chat thread container with shared width */}
+          <div className="w-full max-w-4xl mx-auto px-6">
             {/* Recipe agent header - sticky at top of chat container */}
             {recipe?.title && (
               <div className="sticky top-0 z-10 px-0 -mx-6 mb-6 pt-6">
@@ -459,15 +459,15 @@ function BaseChatContent({
                     </div>
                   )}
 
-                  {/* Extra spacing at bottom to prevent overlap with floating input */}
-                  <div className="block h-56" />
+                  {/* Spacer so latest messages don't sit under input */}
+                  <div className="h-56" />
                 </>
               ) : !recipe && shouldShowPopularTopics ? (
                 /* Show PopularChatTopics when no messages, no recipe, and showPopularTopics is true */
                 <div className="absolute bottom-0 left-0 right-0 flex justify-start pb-32">
-                  <div className="max-w-4xl mx-auto w-full flex flex-col-reverse">
+                  <div className="max-w-4xl mx-auto w-full flex flex-col-reverse px-6">
                     <PopularChatTopics append={(text: string) => append(text)} />
-                    
+
                     {/* Show pending invites above popular topics if enabled */}
                     {showPendingInvites && (
                       <PendingInvitesInHistory showInChatHistory={false} />
@@ -477,7 +477,7 @@ function BaseChatContent({
               ) : showPendingInvites ? (
                 /* Show only pending invites when no messages and showPendingInvites is true */
                 <div className="absolute bottom-0 left-0 right-0 flex justify-start pb-32">
-                  <div className="max-w-4xl mx-auto w-full">
+                  <div className="max-w-4xl mx-auto w-full px-6">
                     <PendingInvitesInHistory showInChatHistory={false} />
                   </div>
                 </div>
@@ -502,42 +502,46 @@ function BaseChatContent({
         </ScrollArea>
       </div>
 
-      {/* Floating Chat Input - positioned absolutely at bottom */}
+      {/* Floating Chat Input */}
       <div
-        className={`absolute left-0 right-0 z-20 ${disableAnimation ? '' : 'animate-[fadein_400ms_ease-in_forwards]'}`}
-        style={{ bottom: '0px' }}
+        className={`absolute left-0 right-0 bottom-0 z-20 pointer-events-none ${
+          disableAnimation ? '' : 'animate-[fadein_400ms_ease-in_forwards]'
+        }`}
+        style={{ transform: 'translateZ(0)' }}
       >
-        <ChatInput
-          sessionId={sessionId}
-          handleSubmit={handleFormSubmit}
-          chatState={chatState}
-          onStop={stopStreaming}
-          commandHistory={commandHistory}
-          initialValue={initialPrompt}
-          setView={setView}
-          numTokens={tokenState?.totalTokens ?? session?.total_tokens ?? undefined}
-          inputTokens={
-            tokenState?.accumulatedInputTokens ?? session?.accumulated_input_tokens ?? undefined
-          }
-          outputTokens={
-            tokenState?.accumulatedOutputTokens ?? session?.accumulated_output_tokens ?? undefined
-          }
-          droppedFiles={droppedFiles}
-          onFilesProcessed={() => setDroppedFiles([])} // Clear dropped files after processing
-          messages={messages as any}
-          setMessages={() => {}} // Placeholder - useChatStream doesn't expose setMessages
-          disableAnimation={disableAnimation}
-          sessionCosts={sessionCosts}
-          setIsGoosehintsModalOpen={setIsGoosehintsModalOpen}
-          recipeConfig={recipe}
-          recipeAccepted={!hasNotAcceptedRecipe}
-          initialPrompt={initialPrompt}
-          toolCount={toolCount || 0}
-          autoSubmit={false}
-          append={append as any}
-          gooseEnabled={gooseEnabled}
-          {...customChatInputProps}
-        />
+        <div className="pointer-events-auto">
+          <ChatInput
+            sessionId={sessionId}
+            handleSubmit={handleFormSubmit}
+            chatState={chatState}
+            onStop={stopStreaming}
+            commandHistory={commandHistory}
+            initialValue={initialPrompt}
+            setView={setView}
+            numTokens={tokenState?.totalTokens ?? session?.total_tokens ?? undefined}
+            inputTokens={
+              tokenState?.accumulatedInputTokens ?? session?.accumulated_input_tokens ?? undefined
+            }
+            outputTokens={
+              tokenState?.accumulatedOutputTokens ?? session?.accumulated_output_tokens ?? undefined
+            }
+            droppedFiles={droppedFiles}
+            onFilesProcessed={() => setDroppedFiles([])} // Clear dropped files after processing
+            messages={messages as any}
+            setMessages={() => {}} // Placeholder - useChatStream doesn't expose setMessages
+            disableAnimation={disableAnimation}
+            sessionCosts={sessionCosts}
+            setIsGoosehintsModalOpen={setIsGoosehintsModalOpen}
+            recipeConfig={recipe}
+            recipeAccepted={!hasNotAcceptedRecipe}
+            initialPrompt={initialPrompt}
+            toolCount={toolCount || 0}
+            autoSubmit={false}
+            append={append as any}
+            gooseEnabled={gooseEnabled}
+            {...customChatInputProps}
+          />
+        </div>
       </div>
 
       {recipe && (

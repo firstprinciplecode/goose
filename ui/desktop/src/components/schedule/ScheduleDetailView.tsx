@@ -481,7 +481,7 @@ const ScheduleDetailView: React.FC<ScheduleDetailViewProps> = ({ scheduleId, onN
   }
 
   return (
-    <div className="h-screen w-full flex flex-col bg-background-default text-text-default">
+    <div className="h-screen w-full flex flex-col text-text-default">
       <div className="px-8 pt-6 pb-4 border-b border-border-subtle flex-shrink-0">
         <BackButton onClick={onNavigateBack} />
         <h1 className="text-4xl font-light mt-1 mb-1 pt-8">Schedule Details</h1>

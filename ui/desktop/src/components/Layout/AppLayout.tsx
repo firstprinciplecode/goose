@@ -1,6 +1,6 @@
-import React, { useState, createContext, useContext, useCallback } from 'react';
+import React, { useState, createContext, useContext, useCallback, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { AppWindowMac, AppWindow, ChevronDown, ChevronUp } from 'lucide-react';
+import { AppWindowMac, AppWindow, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/button';
 import { SidebarProvider } from '../ui/sidebar';
 import { SidecarProvider, useSidecar } from '../SidecarLayout';
@@ -13,14 +13,21 @@ import DocumentEditor from '../DocumentEditor';
 import WebViewer from '../WebViewer';
 
 import { TopNavigation } from './TopNavigation';
+import AppSidebar from '../Sidebar/AppSidebar';
+import { NavigationPosition } from '../settings/app/NavigationPositionSelector';
+
+// Import SVG icons
+import UnionIcon from '../../assets/Union.svg';
 
 // Create context for navigation state
 const NavigationContext = createContext<{
   isNavExpanded: boolean;
   setIsNavExpanded: (expanded: boolean) => void;
+  navigationPosition: NavigationPosition;
 }>({
   isNavExpanded: false,
-  setIsNavExpanded: () => {}
+  setIsNavExpanded: () => {},
+  navigationPosition: 'top',
 });
 
 export const useNavigation = () => useContext(NavigationContext);
@@ -36,6 +43,21 @@ const AppLayoutContent: React.FC<AppLayoutProps> = ({ setIsGoosehintsModalOpen }
   const safeIsMacOS = (window?.electron?.platform || 'darwin') === 'darwin';
   const sidecar = useSidecar();
   const [isNavExpanded, setIsNavExpanded] = useState(false);
+  const [navigationPosition, setNavigationPosition] = useState<NavigationPosition>(() => {
+    const stored = localStorage.getItem('navigation_position') as NavigationPosition | null;
+    return stored ?? 'top';
+  });
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ position: NavigationPosition }>;
+      if (custom.detail?.position) {
+        setNavigationPosition(custom.detail.position);
+      }
+    };
+    window.addEventListener('navigation-position-changed', handler);
+    return () => window.removeEventListener('navigation-position-changed', handler);
+  }, []);
   
   // Bento box state management
   const [bentoBoxContainers, setBentoBoxContainers] = useState<SidecarContainer[]>([]);
@@ -268,74 +290,163 @@ const AppLayoutContent: React.FC<AppLayoutProps> = ({ setIsGoosehintsModalOpen }
     return () => window.removeEventListener('open-sidecar-localhost', handler);
   }, [sidecar]);
 
+  // Handler for sidebar navigation
+  const handleSidebarSetView = (view: string) => {
+    switch (view) {
+      case 'home':
+        navigate('/');
+        break;
+      case 'chat':
+        navigate('/pair');
+        break;
+      case 'sessions':
+        navigate('/sessions');
+        break;
+      case 'recipes':
+        navigate('/recipes');
+        break;
+      case 'schedules':
+        navigate('/schedules');
+        break;
+      case 'extensions':
+        navigate('/extensions');
+        break;
+      case 'peers':
+        navigate('/peers');
+        break;
+      case 'channels':
+        navigate('/channels');
+        break;
+      case 'settings':
+        navigate('/settings');
+        break;
+      default:
+        navigate('/');
+    }
+  };
+
+  const handleSidebarNewChat = () => {
+    navigate('/');
+    // Optionally trigger a new chat action
+    window.dispatchEvent(new CustomEvent('new-chat'));
+  };
+
+  // Render content area (shared between both layouts)
+  const renderContentArea = () => (
+    <div className="flex-1 overflow-hidden">
+      {panels.length > 0 ? (
+        useMultiPanel && panels.length > 1 ? (
+          <MultiPanelSplitter
+            leftContent={<Outlet />}
+            panels={panels}
+            layoutMode={layoutMode}
+            onLayoutModeChange={handleLayoutModeChange}
+            onPanelResize={handlePanelResize}
+            onPanelReorder={handlePanelReorder}
+            initialLeftWidth={chatWidth}
+            className="h-full"
+          />
+        ) : (
+          <ResizableSplitter
+            leftContent={<Outlet />}
+            rightContent={
+              <EnhancedBentoBox
+                containers={bentoBoxContainers}
+                onRemoveContainer={handleRemoveFromBentoBox}
+                onAddContainer={handleAddToBentoBox}
+                onReorderContainers={handleReorderBentoBox}
+              />
+            }
+            initialLeftWidth={chatWidth}
+            minLeftWidth={30}
+            maxLeftWidth={80}
+            onResize={setChatWidth}
+            className="h-full"
+            floatingRight={true}
+          />
+        )
+      ) : (
+        <Outlet />
+      )}
+    </div>
+  );
+
+  const renderNavigation = (position: NavigationPosition) => {
+    if (navigationPosition !== position) {
+      return null;
+    }
+
+    if (position === 'top' || position === 'bottom') {
+      return (
+        <div className={position === 'bottom' ? 'mt-auto' : ''}>
+          <TopNavigation
+            isExpanded={isNavExpanded}
+            setIsExpanded={setIsNavExpanded}
+            position={position}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className={`h-full ${position === 'right' ? 'justify-end flex' : ''}`}>
+        <AppSidebar
+          onNewChat={handleSidebarNewChat}
+          setView={handleSidebarSetView}
+          isExpanded={isNavExpanded}
+          setIsExpanded={setIsNavExpanded}
+          position={position}
+        />
+      </div>
+    );
+  };
+
+  const controlPositionClass = (() => {
+    switch (navigationPosition) {
+      case 'bottom':
+        return 'bottom-4 right-4';
+      default:
+        return 'top-4 right-4';
+    }
+  })();
+
+  const renderToggleIcon = () => {
+    if (navigationPosition === 'left') {
+      return isNavExpanded ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />;
+    }
+    if (navigationPosition === 'right') {
+      return isNavExpanded ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />;
+    }
+    if (navigationPosition === 'bottom') {
+      return isNavExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />;
+    }
+    return isNavExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />;
+  };
+
+  const isHorizontalNav = navigationPosition === 'top' || navigationPosition === 'bottom';
+
   return (
-    <NavigationContext.Provider value={{ isNavExpanded, setIsNavExpanded }}>
-      <div className="flex flex-col flex-1 w-full h-full">
-        {/* Top Navigation Bar */}
-        <TopNavigation isExpanded={isNavExpanded} setIsExpanded={setIsNavExpanded} />
-        
-        {/* Main Content Area */}
-        <div className="flex-1 overflow-hidden">
-          {panels.length > 0 ? (
-            useMultiPanel && panels.length > 1 ? (
-              <MultiPanelSplitter
-                leftContent={<Outlet />}
-                panels={panels}
-                layoutMode={layoutMode}
-                onLayoutModeChange={handleLayoutModeChange}
-                onPanelResize={handlePanelResize}
-                onPanelReorder={handlePanelReorder}
-                initialLeftWidth={chatWidth}
-                className="h-full"
-              />
-            ) : (
-              <ResizableSplitter
-                leftContent={<Outlet />}
-                rightContent={
-                  <EnhancedBentoBox
-                    containers={bentoBoxContainers}
-                    onRemoveContainer={handleRemoveFromBentoBox}
-                    onAddContainer={handleAddToBentoBox}
-                    onReorderContainers={handleReorderBentoBox}
-                  />
-                }
-                initialLeftWidth={chatWidth}
-                minLeftWidth={30}
-                maxLeftWidth={80}
-                onResize={setChatWidth}
-                className="h-full"
-                floatingRight={true}
-              />
-            )
-          ) : (
-            <Outlet />
-          )}
-        </div>
-        
-        {/* Control Buttons - floating in top right */}
-        <div className="absolute top-4 right-4 z-[9999] flex gap-2">
-          <Button
-            onClick={() => setIsNavExpanded(!isNavExpanded)}
-            className="no-drag hover:!bg-background-medium bg-background-default rounded-xl shadow-sm relative"
-            variant="ghost"
-            size="xs"
-            title="Toggle navigation"
-          >
-            {isNavExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            <span className="ml-2 text-xs text-text-muted font-mono">
-              {isNavExpanded ? 'Hide menu' : 'Show menu'}
-            </span>
-          </Button>
-          <Button
-            onClick={handleNewWindow}
-            className="no-drag hover:!bg-background-medium bg-background-default rounded-xl shadow-sm"
-            variant="ghost"
-            size="xs"
-            title="Start a new session in a new window"
-          >
-            {safeIsMacOS ? <AppWindowMac className="w-4 h-4" /> : <AppWindow className="w-4 h-4" />}
-          </Button>
-        </div>
+    <NavigationContext.Provider value={{ isNavExpanded, setIsNavExpanded, navigationPosition }}>
+      <div className={`flex ${isHorizontalNav ? 'flex-col' : 'flex-row'} flex-1 w-full h-full`}>
+        {renderNavigation('top')}
+        {renderNavigation('left')}
+
+        {renderContentArea()}
+
+        {renderNavigation('bottom')}
+        {renderNavigation('right')}
+
+        {/* Drawer icon (Union) - fixed position, always visible */}
+        <button 
+          className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 dark:hover:bg-white/10 transition-colors fixed z-[100] no-drag cursor-pointer"
+          style={{ left: '76px', top: '6px', WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          title={isNavExpanded ? "Collapse sidebar" : "Expand sidebar"}
+          onClick={() => setIsNavExpanded(!isNavExpanded)}
+        >
+          <div className="w-full h-full flex items-center justify-center">
+            <img src={UnionIcon} alt="Toggle sidebar" className="w-[18px] h-[16px] opacity-60 hover:opacity-100 transition-opacity pointer-events-none" />
+          </div>
+        </button>
       </div>
     </NavigationContext.Provider>
   );

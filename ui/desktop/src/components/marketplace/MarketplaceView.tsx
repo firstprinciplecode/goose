@@ -1037,9 +1037,9 @@ const MarketplaceView: React.FC = () => {
   };
 
   return (
-    <div className="relative flex flex-col h-screen bg-background-muted">
+    <div className="relative flex flex-col h-screen">
       {/* Header Section */}
-      <div className="pt-14 pb-4 px-4 mb-0.5 bg-background-default rounded-2xl">
+      <div className="pt-14 pb-4 px-4 mb-0.5">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-light text-text-default mb-1">Marketplace</h1>
@@ -1062,7 +1062,7 @@ const MarketplaceView: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search marketplace..."
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-border-default bg-background-muted focus:outline-none focus:ring-2 focus:ring-background-accent text-sm"
+              className="w-full pl-10 pr-4 py-2 rounded-lg border border-border-default bg-transparent focus:outline-none focus:ring-2 focus:ring-background-accent text-sm"
             />
           </div>
           

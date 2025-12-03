@@ -78,7 +78,7 @@ export default function ExtensionsView({
   return (
     <MainPanelLayout>
       <div className="flex flex-col min-w-0 flex-1 overflow-y-auto relative">
-        <div className="bg-background-default px-8 pb-4 pt-16">
+        <div className="px-8 pb-4 pt-16">
           <div className="flex flex-col page-transition">
             <div className="flex justify-between items-center mb-1">
               <h1 className="text-4xl font-light">Extensions</h1>
