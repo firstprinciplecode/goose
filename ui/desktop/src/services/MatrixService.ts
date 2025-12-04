@@ -17,7 +17,24 @@ export interface MatrixRoom {
   topic?: string;
   members: MatrixUser[];
   isDirectMessage: boolean;
+  isSpace: boolean;
+  roomType?: string;
   lastActivity?: Date;
+  avatarUrl?: string;
+  isPublic?: boolean;
+}
+
+export interface SpaceChild {
+  roomId: string;
+  name?: string;
+  topic?: string;
+  avatarUrl?: string;
+  isSpace: boolean;
+  isPublic?: boolean;
+  suggested?: boolean;
+  via?: string[];
+  order?: string;
+  memberCount?: number;
 }
 
 export interface GooseAIMessage {
@@ -497,6 +514,58 @@ export class MatrixService extends EventEmitter {
         this.cachedRooms = null;
       }
     });
+
+    // Listen for room state events to catch any room changes
+    this.client.on('RoomState.events', (event, state, lastStateEvent) => {
+      const eventType = event.getType();
+      const roomId = event.getRoomId();
+      
+      console.log('🏠 RoomState.events:', {
+        eventType,
+        roomId: roomId?.substring(0, 20) + '...',
+        stateKey: event.getStateKey(),
+      });
+      
+      // Clear rooms cache for any room state change that might affect visibility
+      // This includes: name, topic, avatar, power levels, join rules, etc.
+      if (eventType === 'm.room.name' || 
+          eventType === 'm.room.topic' || 
+          eventType === 'm.room.avatar' ||
+          eventType === 'm.room.join_rules' ||
+          eventType === 'm.room.power_levels' ||
+          eventType === 'm.room.canonical_alias' ||
+          eventType === 'm.room.tombstone') { // Room was upgraded/replaced
+        
+        console.log('🏠 Room state changed, clearing rooms cache:', eventType);
+        this.cachedRooms = null;
+        
+        // Emit specific events for UI updates
+        if (eventType === 'm.room.tombstone') {
+          console.log('🪦 Room tombstoned (upgraded/deleted):', roomId);
+          this.emit('roomTombstoned', { roomId, event });
+        }
+      }
+    });
+
+    // Listen for room deletions/leaves
+    this.client.on('Room.myMembership', (room, membership, prevMembership) => {
+      console.log('🏠 Room.myMembership changed:', {
+        roomId: room.roomId.substring(0, 20) + '...',
+        roomName: room.name,
+        membership,
+        prevMembership,
+      });
+      
+      // Clear rooms cache when our membership changes
+      this.cachedRooms = null;
+      this.cachedFriends = null;
+      
+      // If we left or were kicked/banned, emit event
+      if (membership === 'leave' || membership === 'ban') {
+        console.log('👋 Left or banned from room:', room.roomId);
+        this.emit('roomLeft', { roomId: room.roomId, membership, prevMembership });
+      }
+    });
   }
 
   /**
@@ -863,6 +932,295 @@ export class MatrixService extends EventEmitter {
   }
 
   /**
+   * Get the children (rooms and sub-spaces) of a Matrix Space
+   */
+  async getSpaceChildren(spaceId: string): Promise<SpaceChild[]> {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+
+    console.log('🌌 Getting children for space:', spaceId);
+
+    try {
+      const space = this.client.getRoom(spaceId);
+      if (!space) {
+        console.error('❌ Space not found:', spaceId);
+        return [];
+      }
+
+      // Get all m.space.child state events
+      const childEvents = space.currentState.getStateEvents('m.space.child');
+      const children: SpaceChild[] = [];
+
+      for (const event of childEvents) {
+        const childRoomId = event.getStateKey();
+        if (!childRoomId) continue;
+
+        const content = event.getContent();
+        
+        // Skip if the child is deleted (empty content)
+        if (!content || Object.keys(content).length === 0) {
+          continue;
+        }
+
+        // Get information about the child room/space
+        const childRoom = this.client.getRoom(childRoomId);
+        let childInfo: SpaceChild;
+
+        if (childRoom) {
+          // We have local information about this room
+          const avatarEvent = childRoom.currentState.getStateEvents('m.room.avatar', '');
+          const avatarUrl = avatarEvent?.getContent()?.url || null;
+          
+          const createEvent = childRoom.currentState.getStateEvents('m.room.create', '');
+          const isChildSpace = createEvent?.getContent()?.type === 'm.space';
+          
+          const joinRulesEvent = childRoom.currentState.getStateEvents('m.room.join_rules', '');
+          const isPublic = joinRulesEvent?.getContent()?.join_rule === 'public';
+
+          childInfo = {
+            roomId: childRoomId,
+            name: childRoom.name || content.name || 'Unnamed Room',
+            topic: childRoom.currentState.getStateEvents('m.room.topic', '')?.getContent()?.topic || content.topic,
+            avatarUrl: avatarUrl,
+            isSpace: isChildSpace,
+            isPublic: isPublic,
+            suggested: content.suggested || false,
+            via: content.via || [],
+            order: content.order,
+            memberCount: childRoom.getMembers().length,
+          };
+        } else {
+          // We don't have local info, use what's in the space child event
+          childInfo = {
+            roomId: childRoomId,
+            name: content.name || 'Unknown Room',
+            topic: content.topic,
+            avatarUrl: content.avatar_url,
+            isSpace: false, // We can't determine this without the room
+            isPublic: false, // We can't determine this without the room
+            suggested: content.suggested || false,
+            via: content.via || [],
+            order: content.order,
+            memberCount: 0,
+          };
+        }
+
+        children.push(childInfo);
+      }
+
+      // Sort children by order, then by name
+      children.sort((a, b) => {
+        if (a.order && b.order) {
+          return a.order.localeCompare(b.order);
+        }
+        if (a.order && !b.order) return -1;
+        if (!a.order && b.order) return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+
+      console.log('✅ Found', children.length, 'children in space:', spaceId);
+      return children;
+    } catch (error) {
+      console.error('❌ Failed to get space children:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Add a room or space as a child of a Matrix Space
+   */
+  async addChildToSpace(spaceId: string, childRoomId: string, suggested: boolean = false, order?: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+
+    console.log('🌌 Adding child to space:', { spaceId, childRoomId, suggested, order });
+
+    try {
+      // Get the child room to determine via servers
+      const childRoom = this.client.getRoom(childRoomId);
+      let via: string[] = [];
+      
+      if (childRoom) {
+        // Extract server names from room members for via servers
+        const members = childRoom.getMembers();
+        const servers = new Set<string>();
+        members.forEach(member => {
+          const serverName = member.userId.split(':')[1];
+          if (serverName) {
+            servers.add(serverName);
+          }
+        });
+        via = Array.from(servers).slice(0, 3); // Limit to 3 servers
+      }
+
+      // Create the space child state event
+      const content: any = {
+        via: via.length > 0 ? via : [this.config.homeserverUrl.replace('https://', '')],
+        suggested: suggested,
+      };
+
+      if (order) {
+        content.order = order;
+      }
+
+      // Set the m.space.child state event
+      await this.client.sendStateEvent(spaceId, 'm.space.child', content, childRoomId);
+
+      console.log('✅ Successfully added child to space');
+    } catch (error) {
+      console.error('❌ Failed to add child to space:', error);
+      throw new Error('Failed to add child to space');
+    }
+  }
+
+  /**
+   * Remove a child from a Matrix Space
+   */
+  async removeChildFromSpace(spaceId: string, childRoomId: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+
+    console.log('🌌 Removing child from space:', { spaceId, childRoomId });
+
+    try {
+      // Remove the m.space.child state event by sending empty content
+      await this.client.sendStateEvent(spaceId, 'm.space.child', {}, childRoomId);
+      console.log('✅ Successfully removed child from space');
+    } catch (error) {
+      console.error('❌ Failed to remove child from space:', error);
+      throw new Error('Failed to remove child from space');
+    }
+  }
+
+  /**
+   * Create a new Matrix Space
+   */
+  async createSpace(name: string, topic: string, isPublic: boolean = false): Promise<string> {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+
+    console.log('🌌 Creating Matrix Space:', { name, topic, isPublic });
+
+    try {
+      // Create a Matrix Space room
+      const room = await this.client.createRoom({
+        name: name,
+        topic: topic,
+        preset: isPublic ? 'public_chat' : 'private_chat',
+        creation_content: {
+          type: 'm.space', // This makes it a space instead of a regular room
+        },
+        initial_state: [
+          {
+            type: 'm.room.history_visibility',
+            content: {
+              history_visibility: isPublic ? 'world_readable' : 'invited',
+            },
+          },
+          {
+            type: 'm.room.guest_access',
+            content: {
+              guest_access: isPublic ? 'can_join' : 'forbidden',
+            },
+          },
+        ],
+      });
+
+      console.log('✅ Matrix Space created successfully:', room.room_id);
+      
+      // Create session mapping for the space
+      // This ensures the space has a 1:1 relationship with a Goose session
+      try {
+        const spaceRoom = this.client.getRoom(room.room_id);
+        if (spaceRoom) {
+          await this.ensureSessionMapping(room.room_id, spaceRoom);
+          console.log('📋 Session mapping created for Matrix Space:', room.room_id);
+        }
+      } catch (mappingError) {
+        console.error('❌ Failed to create session mapping for space:', mappingError);
+        // Don't fail the space creation if mapping fails
+      }
+      
+      // Clear rooms cache to refresh space data
+      this.cachedRooms = null;
+      
+      return room.room_id;
+    } catch (error) {
+      console.error('❌ Failed to create Matrix Space:', error);
+      throw new Error('Failed to create space');
+    }
+  }
+
+  /**
+   * Create a new Matrix Room (regular room, not a space)
+   */
+  async createRoom(name: string, topic: string, isPublic: boolean = false, parentSpaceId?: string): Promise<string> {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+
+    console.log('💬 Creating Matrix Room:', { name, topic, isPublic, parentSpaceId });
+
+    try {
+      // Create a regular Matrix room (not a space)
+      const room = await this.client.createRoom({
+        name: name,
+        topic: topic,
+        preset: isPublic ? 'public_chat' : 'private_chat',
+        // No creation_content.type means it's a regular room
+        initial_state: [
+          {
+            type: 'm.room.history_visibility',
+            content: {
+              history_visibility: isPublic ? 'world_readable' : 'invited',
+            },
+          },
+          {
+            type: 'm.room.guest_access',
+            content: {
+              guest_access: isPublic ? 'can_join' : 'forbidden',
+            },
+          },
+        ],
+      });
+
+      console.log('✅ Matrix Room created successfully:', room.room_id);
+      
+      // Create session mapping for the room
+      // This ensures the room has a 1:1 relationship with a Goose session
+      try {
+        const matrixRoom = this.client.getRoom(room.room_id);
+        if (matrixRoom) {
+          await this.ensureSessionMapping(room.room_id, matrixRoom);
+          console.log('📋 Session mapping created for Matrix Room:', room.room_id);
+        }
+      } catch (mappingError) {
+        console.error('❌ Failed to create session mapping for room:', mappingError);
+        // Don't fail the room creation if mapping fails
+      }
+      
+      // If a parent space is specified, add this room as a child
+      if (parentSpaceId) {
+        console.log('🌌 Adding room to parent space:', parentSpaceId);
+        await this.addChildToSpace(parentSpaceId, room.room_id, false);
+        console.log('✅ Room added to parent space');
+      }
+      
+      // Clear rooms cache to refresh room data
+      this.cachedRooms = null;
+      
+      return room.room_id;
+    } catch (error) {
+      console.error('❌ Failed to create Matrix Room:', error);
+      throw new Error('Failed to create room');
+    }
+  }
+
+  /**
    * Invite a user to an existing room
    */
   async inviteToRoom(roomId: string, userId: string): Promise<void> {
@@ -1087,6 +1445,27 @@ export class MatrixService extends EventEmitter {
   }
 
   /**
+   * Check if a room is a Matrix Space
+   */
+  private isSpaceRoom(room: any): boolean {
+    // Check for room creation event with type m.space
+    const createEvent = room.currentState.getStateEvents('m.room.create', '');
+    const roomType = createEvent?.getContent()?.type;
+    
+    return roomType === 'm.space';
+  }
+
+  /**
+   * Check if a room is public (joinable by anyone)
+   */
+  private isPublicRoom(room: any): boolean {
+    const joinRulesEvent = room.currentState.getStateEvents('m.room.join_rules', '');
+    const joinRule = joinRulesEvent?.getContent()?.join_rule;
+    
+    return joinRule === 'public';
+  }
+
+  /**
    * Get all rooms the user is in
    */
   getRooms(): MatrixRoom[] {
@@ -1104,6 +1483,21 @@ export class MatrixService extends EventEmitter {
       // Get room avatar from state events
       const avatarEvent = room.currentState.getStateEvents('m.room.avatar', '');
       const avatarUrl = avatarEvent?.getContent()?.url || null;
+      
+      // Get room type from creation event
+      const createEvent = room.currentState.getStateEvents('m.room.create', '');
+      const roomType = createEvent?.getContent()?.type;
+      
+      // Check if this is a space
+      const isSpace = this.isSpaceRoom(room);
+      
+      // Check if this is a public room
+      const isPublic = this.isPublicRoom(room);
+      
+      // Debug logging for spaces
+      if (isSpace) {
+        console.log('🌌 getRooms: Found Matrix Space:', room.name || 'Unnamed Space', '→', room.roomId.substring(0, 20) + '...');
+      }
       
       // Debug logging for avatar URLs
       if (avatarUrl) {
@@ -1127,6 +1521,9 @@ export class MatrixService extends EventEmitter {
           };
         }),
         isDirectMessage: this.isDirectMessageRoom(room), // Use improved DM detection
+        isSpace: isSpace, // Matrix Space detection
+        roomType: roomType, // Store the room type
+        isPublic: isPublic, // Public/private status
         lastActivity: new Date(room.getLastActiveTimestamp()),
       };
     });
@@ -1931,6 +2328,7 @@ export class MatrixService extends EventEmitter {
 
     try {
       console.log('🔍 Fetching room history for:', roomId, 'limit:', limit);
+      console.log('🔍 Current user ID:', this.config.userId);
       
       const room = this.client.getRoom(roomId);
       if (!room) {
@@ -1945,13 +2343,22 @@ export class MatrixService extends EventEmitter {
       console.log('📜 Found', events.length, 'events in room timeline');
       
       // Filter and convert message events
-      const messages = events
-        .filter(event => event.getType() === 'm.room.message')
+      const messageEvents = events.filter(event => event.getType() === 'm.room.message');
+      console.log('📜 Found', messageEvents.length, 'message events');
+      
+      const messages = messageEvents
         .slice(-limit) // Get the last N messages
-        .map(event => {
+        .map((event, index) => {
           const content = event.getContent();
           const sender = event.getSender();
           const isFromSelf = sender === this.config.userId;
+          
+          console.log(`📜 Processing message ${index + 1}/${Math.min(messageEvents.length, limit)}:`, {
+            sender: sender?.substring(0, 30) + '...',
+            isFromSelf,
+            contentPreview: content.body?.substring(0, 50) + '...',
+            timestamp: new Date(event.getTs()).toISOString()
+          });
           
           // Get sender information
           const senderMember = room.getMember(sender);
@@ -1975,7 +2382,7 @@ export class MatrixService extends EventEmitter {
               sessionData = JSON.parse(sessionJson);
               actualContent = sessionData.content || actualContent;
               
-              // FIXED: Better role detection for session messages
+              // Better role detection for session messages
               if (sessionData.role === 'assistant' || sessionData.role === 'ai' || sessionData.role === 'goose') {
                 messageType = 'assistant';
               } else if (sessionData.role === 'system') {
@@ -1989,22 +2396,42 @@ export class MatrixService extends EventEmitter {
               console.warn('Failed to parse session message:', error);
             }
           }
-          // Check if this is a regular Goose/AI message
-          else if (content['goose.message.type'] || content['goose.type'] || 
-              this.isGooseInstance(sender, senderInfo.displayName) ||
-              this.looksLikeGooseMessage(actualContent)) {
+          // Check if this is a regular Goose/AI message (but NOT from self unless it has explicit Goose markers)
+          else if (content['goose.message.type'] || content['goose.type']) {
+            // Explicit Goose message markers - always treat as assistant
             messageType = 'assistant';
-          } else if (content.msgtype === 'm.notice' || sender.includes('bot')) {
-            messageType = 'system';
+            console.log('📜 Explicit Goose message detected:', content['goose.message.type'] || content['goose.type']);
           }
-          
-          // ADDITIONAL FIX: Check if message is from self but contains AI response patterns
-          else if (isFromSelf && this.looksLikeGooseMessage(actualContent)) {
-            // This handles cases where the user's own messages contain AI responses
+          // Check if message is from a known Goose instance (not self)
+          else if (!isFromSelf && this.isGooseInstance(sender, senderInfo.displayName)) {
             messageType = 'assistant';
+            console.log('📜 Message from Goose instance detected:', sender);
+          }
+          // Check if message content looks like a Goose message (not self)
+          else if (!isFromSelf && this.looksLikeGooseMessage(actualContent)) {
+            messageType = 'assistant';
+            console.log('📜 Message content looks like Goose message');
+          }
+          // System messages
+          else if (content.msgtype === 'm.notice' || sender.includes('bot')) {
+            messageType = 'system';
+            console.log('📜 System message detected');
+          }
+          // CRITICAL FIX: Messages from self that don't have explicit Goose markers should be 'user'
+          // This ensures user's own messages are properly categorized as 'user' type
+          else {
+            // Default to 'user' for all other messages, including messages from self
+            messageType = 'user';
+            
+            // Log for debugging
+            if (isFromSelf) {
+              console.log('📜 ✅ Message from self categorized as user:', actualContent.substring(0, 50) + '...');
+            } else {
+              console.log('📜 Message from other user categorized as user:', actualContent.substring(0, 50) + '...');
+            }
           }
 
-          return {
+          const result = {
             messageId: event.getId() || `msg_${event.getTs()}`,
             sender,
             content: actualContent,
@@ -2023,9 +2450,26 @@ export class MatrixService extends EventEmitter {
               originalContent: content.body,
             },
           };
+          
+          console.log(`📜 Final result for message ${index + 1}:`, {
+            type: result.type,
+            isFromSelf: result.isFromSelf,
+            sender: result.sender?.substring(0, 30) + '...',
+            content: result.content?.substring(0, 50) + '...'
+          });
+          
+          return result;
         });
 
       console.log('📜 Processed', messages.length, 'messages from room history');
+      console.log('📜 Message type breakdown:', {
+        user: messages.filter(m => m.type === 'user').length,
+        assistant: messages.filter(m => m.type === 'assistant').length,
+        system: messages.filter(m => m.type === 'system').length,
+        fromSelf: messages.filter(m => m.isFromSelf).length,
+        fromOthers: messages.filter(m => !m.isFromSelf).length,
+      });
+      
       return messages;
       
     } catch (error) {

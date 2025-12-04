@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { MatrixService, MatrixUser, MatrixRoom, GooseAIMessage, GooseChatMessage, GooseInstance } from '../services/MatrixService';
+import { MatrixService, MatrixUser, MatrixRoom, SpaceChild, GooseAIMessage, GooseChatMessage, GooseInstance } from '../services/MatrixService';
 
 interface MatrixContextType {
   // Connection state
@@ -19,6 +19,11 @@ interface MatrixContextType {
   searchUsers: (query: string) => Promise<MatrixUser[]>;
   addFriend: (userId: string) => Promise<void>;
   createAISession: (name: string, inviteUserIds?: string[]) => Promise<string>;
+  createSpace: (name: string, topic: string, isPublic?: boolean) => Promise<string>;
+  createRoom: (name: string, topic: string, isPublic?: boolean, parentSpaceId?: string) => Promise<string>;
+  getSpaceChildren: (spaceId: string) => Promise<SpaceChild[]>;
+  addChildToSpace: (spaceId: string, childRoomId: string, suggested?: boolean, order?: string) => Promise<void>;
+  removeChildFromSpace: (spaceId: string, childRoomId: string) => Promise<void>;
   joinRoom: (roomId: string) => Promise<void>;
   inviteToRoom: (roomId: string, userId: string) => Promise<void>;
   sendMessage: (roomId: string, message: string) => Promise<void>;
@@ -162,10 +167,7 @@ export const MatrixProvider: React.FC<MatrixProviderProps> = ({ children, matrix
 
     const handleRoomAvatarUpdated = () => {
       console.log('🖼️ MatrixContext: Room avatar updated, refreshing data...');
-      // Add a small delay to ensure the Matrix server has synced the change
-      setTimeout(() => {
-        updateData();
-      }, 500);
+      updateData();
     };
 
     // Add event listeners
@@ -234,6 +236,26 @@ export const MatrixProvider: React.FC<MatrixProviderProps> = ({ children, matrix
 
   const createAISession = async (name: string, inviteUserIds: string[] = []) => {
     return await matrixService.createAISession(name, inviteUserIds);
+  };
+
+  const createSpace = async (name: string, topic: string, isPublic: boolean = false) => {
+    return await matrixService.createSpace(name, topic, isPublic);
+  };
+
+  const createRoom = async (name: string, topic: string, isPublic: boolean = false, parentSpaceId?: string) => {
+    return await matrixService.createRoom(name, topic, isPublic, parentSpaceId);
+  };
+
+  const getSpaceChildren = async (spaceId: string) => {
+    return await matrixService.getSpaceChildren(spaceId);
+  };
+
+  const addChildToSpace = async (spaceId: string, childRoomId: string, suggested: boolean = false, order?: string) => {
+    await matrixService.addChildToSpace(spaceId, childRoomId, suggested, order);
+  };
+
+  const removeChildFromSpace = async (spaceId: string, childRoomId: string) => {
+    await matrixService.removeChildFromSpace(spaceId, childRoomId);
   };
 
   const joinRoom = async (roomId: string) => {
@@ -402,6 +424,11 @@ export const MatrixProvider: React.FC<MatrixProviderProps> = ({ children, matrix
     searchUsers,
     addFriend,
     createAISession,
+    createSpace,
+    createRoom,
+    getSpaceChildren,
+    addChildToSpace,
+    removeChildFromSpace,
     joinRoom,
     inviteToRoom,
     sendMessage,

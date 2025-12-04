@@ -14,7 +14,9 @@ import WebViewer from '../WebViewer';
 
 import { TopNavigation } from './TopNavigation';
 import AppSidebar from '../Sidebar/AppSidebar';
+import { CondensedNavigation } from './CondensedNavigation';
 import { NavigationPosition } from '../settings/app/NavigationPositionSelector';
+import { NavigationStyle } from '../settings/app/NavigationStyleSelector';
 
 // Import SVG icons
 import UnionIcon from '../../assets/Union.svg';
@@ -47,7 +49,12 @@ const AppLayoutContent: React.FC<AppLayoutProps> = ({ setIsGoosehintsModalOpen }
     const stored = localStorage.getItem('navigation_position') as NavigationPosition | null;
     return stored ?? 'top';
   });
-
+  const [navigationStyle, setNavigationStyle] = useState<NavigationStyle>(() => {
+    const stored = localStorage.getItem('navigation_style');
+    return (stored as NavigationStyle) || 'expanded';
+  });
+  
+  // Listen for navigation position changes
   useEffect(() => {
     const handler = (event: Event) => {
       const custom = event as CustomEvent<{ position: NavigationPosition }>;
@@ -57,6 +64,17 @@ const AppLayoutContent: React.FC<AppLayoutProps> = ({ setIsGoosehintsModalOpen }
     };
     window.addEventListener('navigation-position-changed', handler);
     return () => window.removeEventListener('navigation-position-changed', handler);
+  }, []);
+  
+  // Listen for navigation style changes
+  useEffect(() => {
+    const handleStyleChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ style: NavigationStyle }>;
+      setNavigationStyle(customEvent.detail.style);
+    };
+    
+    window.addEventListener('navigation-style-changed', handleStyleChange);
+    return () => window.removeEventListener('navigation-style-changed', handleStyleChange);
   }, []);
   
   // Bento box state management
