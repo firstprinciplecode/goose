@@ -293,6 +293,7 @@ export function useChatStream({
   // Debug logging for Matrix parameters
   console.log('🔧 useChatStream called with Matrix params:', {
     sessionId: sessionId?.substring(0, 8),
+    fullSessionId: sessionId, // Show full session ID for debugging
     isMatrixTab,
     matrixRoomId: matrixRoomId ? matrixRoomId.substring(0, 20) + '...' : 'undefined',
     tabId
@@ -351,7 +352,9 @@ export function useChatStream({
       sessionId,
       hasSessionId: !!sessionId,
       sessionIdLength: sessionId?.length,
-      willReturn: !sessionId
+      willReturn: !sessionId,
+      currentSession: session?.id,
+      currentMessagesLength: messages.length
     });
     
     if (!sessionId) {
@@ -359,7 +362,25 @@ export function useChatStream({
       return;
     }
 
-    // Reset state when sessionId changes
+    // CRITICAL FIX: Don't reset state if we're just switching from temp to real session ID
+    // for the same logical session (prevents Matrix chat reload issue)
+    const isSessionIdUpdate = session?.id && session.id !== sessionId && 
+      (sessionId.startsWith('temp_') || session.id.startsWith('temp_'));
+    
+    if (isSessionIdUpdate && messages.length > 0) {
+      console.log('🔄 Session ID update detected with existing messages, preserving state:', {
+        from: session.id,
+        to: sessionId,
+        messagesLength: messages.length
+      });
+      // Just update the session ID reference without resetting state
+      if (session) {
+        setSession({ ...session, id: sessionId });
+      }
+      return;
+    }
+
+    // Reset state when sessionId changes (but allow initial loading)
     log.session('loading', sessionId, {
       previousSessionId: session?.id,
       currentMessagesCount: messages.length,

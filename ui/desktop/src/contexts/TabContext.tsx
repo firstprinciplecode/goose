@@ -97,9 +97,12 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // CRITICAL FIX: Validate and sanitize restored tab state
+          // CRITICAL FIX: Ensure each restored tab gets a unique session ID
           const sanitizedTabs = parsed.map((tabState: any) => {
             const tab = tabState.tab;
+            
+            // Generate a new unique session ID for each restored tab to prevent conflicts
+            const uniqueSessionId = `temp_restored_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             
             // Validate Matrix tab properties (HYBRID APPROACH)
             if (tab.type === 'matrix') {
@@ -113,7 +116,24 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
                     type: 'chat',
                     matrixRoomId: undefined,
                     matrixRecipientId: undefined,
-                    // Keep the sessionId as-is since it's a valid backend session ID
+                    sessionId: uniqueSessionId, // Assign unique session ID
+                  },
+                  chat: {
+                    ...tabState.chat,
+                    sessionId: uniqueSessionId,
+                  }
+                };
+              } else {
+                // Valid Matrix tab - give it a unique session ID
+                return {
+                  ...tabState,
+                  tab: {
+                    ...tab,
+                    sessionId: uniqueSessionId, // Assign unique session ID
+                  },
+                  chat: {
+                    ...tabState.chat,
+                    sessionId: uniqueSessionId,
                   }
                 };
               }
@@ -128,16 +148,31 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
                     type: 'chat',
                     matrixRoomId: undefined,
                     matrixRecipientId: undefined,
-                    // Keep the sessionId as-is - it might be a valid backend session ID
+                    sessionId: uniqueSessionId, // Assign unique session ID
+                  },
+                  chat: {
+                    ...tabState.chat,
+                    sessionId: uniqueSessionId,
+                  }
+                };
+              } else {
+                // Valid regular tab - give it a unique session ID
+                return {
+                  ...tabState,
+                  tab: {
+                    ...tab,
+                    sessionId: uniqueSessionId, // Assign unique session ID
+                  },
+                  chat: {
+                    ...tabState.chat,
+                    sessionId: uniqueSessionId,
                   }
                 };
               }
             }
-            
-            return tabState;
           });
           
-          console.log('🔄 Restored and sanitized tab states:', sanitizedTabs.map(ts => ({
+          console.log('🔄 Restored and sanitized tab states with unique session IDs:', sanitizedTabs.map(ts => ({
             id: ts.tab.id,
             type: ts.tab.type,
             sessionId: ts.tab.sessionId,
@@ -204,6 +239,11 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
   const handleNewTab = useCallback(async () => {
     try {
       console.log('🆕 Creating new tab with immediate backend session');
+      console.log('🆕 Current tab states before creating new tab:', tabStates.map(ts => ({
+        tabId: ts.tab.id,
+        sessionId: ts.tab.sessionId,
+        title: ts.tab.title
+      })));
       
       // Create a new backend session immediately using startAgent
       const response = await startAgent({
@@ -227,20 +267,41 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
         loadingChat: false
       };
       
-      setTabStates(prev => [...prev, newTabState]);
+      setTabStates(prev => {
+        const updatedStates = [...prev, newTabState];
+        console.log('🆕 Updated tab states after adding new tab:', updatedStates.map(ts => ({
+          tabId: ts.tab.id,
+          sessionId: ts.tab.sessionId,
+          title: ts.tab.title,
+          isActive: ts.tab.isActive
+        })));
+        return updatedStates;
+      });
       setActiveTabId(newTab.id);
       
-      console.log('✅ New tab created successfully:', { tabId: newTab.id, sessionId });
+      console.log('✅ New tab created successfully:', { 
+        tabId: newTab.id, 
+        sessionId,
+        uniqueSessionIds: [...new Set([...tabStates.map(ts => ts.tab.sessionId), sessionId])].length,
+        totalTabs: tabStates.length + 1
+      });
     } catch (error) {
       console.error('❌ Failed to create new tab with backend session:', error);
       
       // Fallback: create tab with temporary session ID and try to create backend session later
-      const newTab = createNewTab({ sessionId: `temp_${Date.now()}` });
+      const tempSessionId = `temp_${Date.now()}`;
+      const newTab = createNewTab({ sessionId: tempSessionId });
       const newTabState: TabState = {
         tab: newTab,
         chat: createNewChat(newTab.sessionId),
         loadingChat: false
       };
+      
+      console.log('🆕 Creating fallback tab with temp session:', {
+        tabId: newTab.id,
+        tempSessionId,
+        currentTabCount: tabStates.length
+      });
       
       setTabStates(prev => [...prev, newTabState]);
       setActiveTabId(newTab.id);
@@ -255,7 +316,7 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
         }
       }, 1000);
     }
-  }, []);
+  }, [tabStates]);
 
   const handleTabClose = useCallback(async (tabId: string) => {
     // Prevent closing the last tab
@@ -423,6 +484,7 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
   const clearTabState = useCallback(() => {
     try {
       localStorage.removeItem(TAB_STATE_STORAGE_KEY);
+      console.log('🧹 Cleared tab state from localStorage to prevent session ID conflicts');
     } catch (error) {
       console.warn('Failed to clear tab state from localStorage:', error);
     }
@@ -431,6 +493,8 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     setTabStates(initialState);
     setActiveTabId(initialState[0].tab.id);
   }, []);
+
+
 
   // Sync tab title with backend session description
   const syncTabTitleWithBackend = useCallback(async (tabId: string) => {

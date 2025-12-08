@@ -254,8 +254,25 @@ export const useSessionSharing = ({
       roomId: targetRoomId,
       owner: sessionId,
       hasExplicitMatrixRoomId,
-      registrySize: globalMatrixListenerRegistry.current.size
+      registrySize: globalMatrixListenerRegistry.current.size,
+      fullRegistry: Array.from(globalMatrixListenerRegistry.current.entries())
     });
+
+    // CRITICAL FIX: Update room ownership when session ID changes from temp to real
+    // This ensures MatrixRealtimeSync can find the correct mapping
+    const handleSessionIdChange = (event: CustomEvent) => {
+      const { oldSessionId, newSessionId } = event.detail;
+      if (oldSessionId === sessionId && targetRoomId) {
+        console.log('🔄 useSessionSharing: Updating Matrix room ownership for session ID change:', {
+          roomId: targetRoomId,
+          oldOwner: oldSessionId,
+          newOwner: newSessionId
+        });
+        globalMatrixListenerRegistry.current.set(targetRoomId, newSessionId);
+      }
+    };
+
+    window.addEventListener('session-id-changed', handleSessionIdChange as EventListener);
 
     console.log('🔧 useSessionSharing: Setting up session management listeners for session:', sessionId);
 
@@ -492,10 +509,15 @@ export const useSessionSharing = ({
         console.log('💬 Converting Goose message to local message and syncing:', message);
         console.log('🔍 onMessageSync callback available?', !!onMessageSync);
         
-        // CRITICAL SAFETY CHECK: Only call onMessageSync if we have explicit Matrix room setup
-        if (onMessageSync && hasExplicitMatrixRoomId) {
-          console.log('✅ CALLING onMessageSync - Matrix room explicitly configured');
-          console.log('📤 Calling onMessageSync with message:', {
+        // CRITICAL SAFETY CHECK: Only call onMessageSync for the SPECIFIC Matrix room this tab owns
+        // Check if this tab is the designated owner of this Matrix room
+        const isRoomOwner = globalMatrixListenerRegistry.current.get(targetRoomId) === sessionId;
+        const shouldCallOnMessageSync = onMessageSync && targetRoomId && isRoomOwner;
+        
+        if (shouldCallOnMessageSync) {
+          console.log('✅ CALLING onMessageSync - This tab owns the Matrix room:', {
+            roomId: targetRoomId,
+            owner: sessionId,
             messageId: message.id,
             role: message.role,
             sender: message.sender?.displayName || message.sender?.userId,
@@ -503,10 +525,13 @@ export const useSessionSharing = ({
           });
           onMessageSync(message);
         } else {
-          console.log('🚫 BLOCKING onMessageSync - No explicit Matrix room configuration', {
+          console.log('🚫 BLOCKING onMessageSync - Not the designated owner of this Matrix room', {
             hasOnMessageSync: !!onMessageSync,
-            hasExplicitMatrixRoomId: hasExplicitMatrixRoomId,
-            initialRoomId: initialRoomId
+            targetRoomId: targetRoomId,
+            registeredOwner: globalMatrixListenerRegistry.current.get(targetRoomId),
+            thisSessionId: sessionId,
+            isRoomOwner: isRoomOwner,
+            registrySize: globalMatrixListenerRegistry.current.size
           });
         }
       } else {
@@ -748,19 +773,32 @@ export const useSessionSharing = ({
                 contentPreview: message.content[0]?.text?.substring(0, 50) + '...'
               });
               
-              // CRITICAL SAFETY CHECK: Only call onMessageSync if we have explicit Matrix room setup
-              if (onMessageSync && hasExplicitMatrixRoomId) {
-                console.log('✅ CALLING onMessageSync FROM GOOSE SESSION SYNC - Matrix room explicitly configured');
+              // CRITICAL SAFETY CHECK: Only call onMessageSync for the SPECIFIC Matrix room this tab owns
+              // Check if this tab is the designated owner of this Matrix room
+              const isRoomOwner = globalMatrixListenerRegistry.current.get(targetRoomId) === sessionId;
+              const shouldCallOnMessageSync = onMessageSync && targetRoomId && isRoomOwner;
+              
+              if (shouldCallOnMessageSync) {
+                console.log('✅ CALLING onMessageSync FROM GOOSE SESSION SYNC - This tab owns the Matrix room:', {
+                  roomId: targetRoomId,
+                  owner: sessionId,
+                  messageId: message.id,
+                  role: message.role,
+                  sender: senderData?.displayName || senderData?.userId
+                });
                 onMessageSync(message);
                 
                 // Mark as processed ONLY after successfully calling onMessageSync
                 processedMessages.current.add(messageKey);
                 console.log('✅ Marked message as processed:', messageKey);
               } else {
-                console.log('🚫 BLOCKING onMessageSync FROM GOOSE SESSION SYNC - No explicit Matrix room configuration', {
+                console.log('🚫 BLOCKING onMessageSync FROM GOOSE SESSION SYNC - Not the designated owner of this Matrix room', {
                   hasOnMessageSync: !!onMessageSync,
-                  hasExplicitMatrixRoomId: hasExplicitMatrixRoomId,
-                  initialRoomId: initialRoomId
+                  targetRoomId: targetRoomId,
+                  registeredOwner: globalMatrixListenerRegistry.current.get(targetRoomId),
+                  thisSessionId: sessionId,
+                  isRoomOwner: isRoomOwner,
+                  registrySize: globalMatrixListenerRegistry.current.size
                 });
               }
             } else {
@@ -795,6 +833,9 @@ export const useSessionSharing = ({
           registrySize: globalMatrixListenerRegistry.current.size
         });
       }
+      
+      // Clean up event listeners
+      window.removeEventListener('session-id-changed', handleSessionIdChange as EventListener);
       
       sessionCleanup();
       messageCleanup();
