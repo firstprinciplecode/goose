@@ -11,6 +11,7 @@ import ThemeSelector from '../../GooseSidebar/ThemeSelector';
 import NavigationPositionSelector from './NavigationPositionSelector';
 import NavigationStyleSelector from './NavigationStyleSelector';
 import NavigationModeSelector, { useNavigationMode } from './NavigationModeSelector';
+import NavigationCustomizationSettings from './NavigationCustomizationSettings';
 import BlockLogoBlack from './icons/block-lockup_black.png';
 import BlockLogoWhite from './icons/block-lockup_white.png';
 import BackgroundSection from '../appearance/BackgroundSection';
@@ -470,6 +471,9 @@ export default function AppSettingsSection({ scrollToSection }: AppSettingsSecti
           <NavigationStyleSelector />
         </CardContent>
       </Card>
+
+      {/* Navigation Customization Settings */}
+      <NavigationCustomizationSettings />
 
       <Card className="rounded-lg">
         <CardHeader className="pb-0">
