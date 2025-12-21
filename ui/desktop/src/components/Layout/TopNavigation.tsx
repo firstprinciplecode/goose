@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, History, FileText, Clock, Puzzle, Settings as SettingsIcon, GripVertical, Users, Hash, ShoppingBag } from 'lucide-react';
+import { Home, History, FileText, Clock, Puzzle, Settings as SettingsIcon, GripVertical, Users, Hash, ShoppingBag, Bot } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChatSmart } from '../icons';
 import { listSessions, getSessionInsights } from '../../api';
 import { useConfig } from '../ConfigContext';
 import { listSavedRecipes } from '../../recipe/recipe_management';
 import { useNavigationCustomization } from '../settings/app/NavigationCustomizationSettings';
+import { createNavigationHandler } from '../../utils/navigationUtils';
 
 interface NavItem {
   id: string;
@@ -115,6 +116,7 @@ const AnalogClock: React.FC = () => {
 
 export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsExpanded, position = 'top', isOverlayMode = false }) => {
   const navigate = useNavigate();
+  const setView = React.useMemo(() => createNavigationHandler(navigate), [navigate]);
   const location = useLocation();
   const { extensionsList, getExtensions } = useConfig();
   const { preferences } = useNavigationCustomization();
@@ -264,60 +266,25 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
       tagAlign: 'left',
     },
     {
-      id: 'history',
-      path: '/sessions',
-      label: 'History',
-      icon: History,
-      getTag: () => `${totalSessions} total`,
+      id: 'agent-studio',
+      path: '/agent-studio',
+      label: 'Agent Studio',
+      icon: Bot,
+      getTag: () => 'AI',
       tagAlign: 'left',
     },
     {
-      id: 'recipes',
-      path: '/recipes',
-      label: 'Recipes',
-      icon: FileText,
-      getTag: () => `${recipesCount}`,
-    },
-    {
-      id: 'scheduler',
-      path: '/schedules',
-      label: 'Marketplace',
-      icon: ShoppingBag,
-    },
-    {
-      id: 'extensions',
-      path: '/extensions',
-      label: 'Extensions',
-      icon: Puzzle,
-      getTag: () => {
-        if (!extensionsList || !Array.isArray(extensionsList)) {
-          return '0 of 0 enabled';
-        }
-        const enabled = extensionsList.filter(ext => ext.enabled).length;
-        const total = extensionsList.length;
-        return `${enabled} of ${total} enabled`;
-      },
-    },
-    {
-      id: 'peers',
-      path: '/peers',
-      label: 'Peers',
+      id: 'team',
+      path: '/team',
+      label: 'Team',
       icon: Users,
-      getTag: () => '3 online',
-      tagAlign: 'left',
-    },
-    {
-      id: 'channels',
-      path: '/channels',
-      label: 'Channels',
-      icon: Hash,
-      getTag: () => '7 active',
+      getTag: () => 'team',
       tagAlign: 'left',
     },
     {
       id: 'settings',
       path: '/settings',
-      label: 'Settings',
+      label: 'Customize',
       icon: SettingsIcon,
       getTag: () => '✓',
       tagAlign: 'left',
@@ -408,20 +375,25 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
       preferences.enabledItems.includes(item.id)
     );
 
+    // Push + Left/Right should be a clean menu (no widgets)
+    const isVertical = position === 'left' || position === 'right';
+    const filteredEnabledItems =
+      !isOverlayMode && isVertical ? enabledItems.filter((item) => !item.isWidget) : enabledItems;
+
     // Order items according to user preferences
     const orderedItems = preferences.itemOrder
-      .map(id => enabledItems.find(item => item.id === id))
+      .map(id => filteredEnabledItems.find(item => item.id === id))
       .filter(Boolean) as NavItem[];
 
     // Add any new items that aren't in the order yet (for backwards compatibility)
-    const itemsNotInOrder = enabledItems.filter(item => 
+    const itemsNotInOrder = filteredEnabledItems.filter(item => 
       !preferences.itemOrder.includes(item.id)
     );
 
     const result = [...orderedItems, ...itemsNotInOrder];
     console.log('TopNavigation: Computed navItems:', result.map(item => item.id));
     return result;
-  }, [navItemsBase, preferences.enabledItems, preferences.itemOrder, forceUpdate, currentTime, todayChatsCount, totalSessions, recipesCount, totalTokens]);
+  }, [navItemsBase, preferences.enabledItems, preferences.itemOrder, forceUpdate, currentTime, todayChatsCount, totalSessions, recipesCount, totalTokens, isOverlayMode, position]);
 
   // Listen for navigation preferences updates
   useEffect(() => {
@@ -510,25 +482,28 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
   // Determine grid layout based on position and overlay mode
   const isVertical = position === 'left' || position === 'right';
   
+  // For Push mode + Left/Right: Use classic sidebar, not tiles
+  const useClassicSidebar = !isOverlayMode && isVertical;
+  
   // Calculate grid rows to fill vertical space
   const totalItems = navItems.length;
   const gridRows = Math.ceil(totalItems / 2); // 2 columns for vertical
   
   // Grid classes for overlay mode vs regular mode
   const gridClasses = isOverlayMode
-    ? 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4 gap-px w-full h-full' // Overlay: max 4 columns, 1px gaps, full bleed
-    : isVertical
-      ? 'grid grid-cols-1 gap-0.5 h-full overflow-y-auto' // Vertical layout: 1 column, scrollable
-      : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 lg:grid-cols-6 xl:grid-cols-6 2xl:grid-cols-6 gap-0.5'; // Horizontal layout: more columns
+    ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 p-4' // Overlay: centered grid with minimal gaps
+    : useClassicSidebar
+      ? 'flex flex-col gap-1 h-full overflow-y-auto' // Classic sidebar: vertical list
+      : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 lg:grid-cols-6 xl:grid-cols-6 2xl:grid-cols-6 gap-0.5'; // Horizontal layout: tiles
   
   const containerClasses = isOverlayMode
-    ? 'w-full h-full' // Full screen for overlay
+    ? 'w-full h-full flex items-center justify-center' // Centered for overlay
     : isVertical
       ? 'h-full' // Full height for vertical nav
       : 'w-full overflow-hidden'; // Full width for horizontal nav
 
   return (
-    <div className={`${isOverlayMode ? 'bg-transparent' : 'bg-background-muted'} ${containerClasses} relative z-[9998]`}>
+    <div className={`${(isOverlayMode || isVertical) ? 'bg-transparent' : 'bg-background-muted'} ${containerClasses} relative z-[9998]`}>
       {/* Expanded Navigation Cards with Spring Animation */}
       <AnimatePresence initial={false}>
         {isExpanded && (
@@ -569,7 +544,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
                 ease: "easeInOut"
               }
             }}
-            className={`${isOverlayMode ? 'bg-transparent w-full h-full' : 'bg-background-muted overflow-hidden'} ${isVertical && !isOverlayMode ? 'h-full' : ''}`}
+            className={`${isOverlayMode ? 'bg-transparent w-full h-full flex items-center justify-center' : (isVertical ? 'bg-transparent overflow-hidden' : 'bg-background-muted overflow-hidden')} ${isVertical && !isOverlayMode ? 'h-full' : ''}`}
           >
             <motion.div
               initial={isOverlayMode ? { opacity: 0 } : { [isVertical ? 'x' : 'y']: -20 }}
@@ -583,11 +558,11 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
                 stiffness: 400,
                 damping: 25,
               }}
-              className={`${isOverlayMode ? 'w-full h-full overflow-y-auto' : isVertical ? 'p-1 h-full' : 'pb-0.5 lg:max-h-[2000px] md:max-h-[calc(100vh-60px)] max-h-screen'}`}
-              style={{ width: isVertical && !isOverlayMode ? '360px' : undefined }}
+              className={`${isOverlayMode ? 'max-w-5xl overflow-y-auto flex items-center justify-center' : useClassicSidebar ? 'pt-12 px-2 pb-2 h-full' : isVertical ? 'pt-12 px-2 pb-2 h-full' : 'pb-0.5 lg:max-h-[2000px] md:max-h-[calc(100vh-60px)] max-h-screen'}`}
+              style={{ width: isVertical && !isOverlayMode ? (useClassicSidebar ? '240px' : '360px') : undefined }}
             >
               <div 
-                className={gridClasses} 
+                className={`${gridClasses} ${isOverlayMode ? 'justify-center' : ''}`} 
                 style={{ 
                   gridTemplateColumns: !isVertical && !isOverlayMode && isUltraWide ? 'repeat(12, minmax(0, 1fr))' : undefined,
                   gridTemplateRows: undefined,
@@ -643,10 +618,53 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
                 );
               }
 
-              // Regular navigation tiles
+              // Regular navigation items
               const IconComponent = item.icon!;
               const active = isActive(item.path!);
 
+              // Classic sidebar row layout for Push + Left/Right
+              if (useClassicSidebar) {
+                return (
+                  <motion.button
+                    key={item.id}
+                    onClick={() => {
+                      if (item.id === 'settings') {
+                        // Always open Customize in a separate Preferences window
+                        if (typeof window?.electron?.createPreferencesWindow === 'function') {
+                          void window.electron.createPreferencesWindow({ section: 'interface' });
+                        }
+                      } else {
+                        navigate(item.path!);
+                      }
+                      setIsExpanded(false);
+                    }}
+                    initial={{ opacity: 0, x: -12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 350,
+                      damping: 25,
+                      delay: index * 0.015,
+                    }}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    className={`
+                      flex flex-row items-center gap-3 w-full
+                      relative rounded-lg transition-colors duration-200 no-drag
+                      px-3 py-2.5
+                      ${active 
+                        ? 'bg-background-accent text-text-on-accent' 
+                        : 'text-text-default hover:bg-background-medium'
+                      }
+                    `}
+                  >
+                    <IconComponent className="w-5 h-5 flex-shrink-0" />
+                    <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                  </motion.button>
+                );
+              }
+
+              // Tile layout for Top/Bottom and Overlay
               return (
                 <motion.div
                   key={item.id}
@@ -677,7 +695,14 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
                 >
                   <motion.button
                     onClick={() => {
-                      navigate(item.path!);
+                      if (item.id === 'settings') {
+                        // Always open Customize in a separate Preferences window
+                        if (typeof window?.electron?.createPreferencesWindow === 'function') {
+                          void window.electron.createPreferencesWindow({ section: 'interface' });
+                        }
+                      } else {
+                        navigate(item.path!);
+                      }
                       setIsExpanded(false);
                     }}
                     whileHover={{ scale: 1.02 }}
@@ -685,7 +710,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
                     className={`
                       w-full relative flex flex-col items-start justify-between
                       rounded-2xl
-                      ${isOverlayMode ? 'px-8 py-8' : 'px-6 py-6'}
+                      ${isOverlayMode ? 'px-7 py-9' : 'px-6 py-6'}
                       transition-colors duration-200
                       no-drag
                       ${isOverlayMode 
@@ -718,17 +743,17 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
 
                     {/* Tag in top corner */}
                     {item.getTag && (
-                      <div className={`absolute top-4 px-2 py-1 rounded-full ${
-                        item.tagAlign === 'left' ? 'left-4' : 'right-4'
+                      <div className={`absolute ${isOverlayMode ? 'top-4 px-2 py-0.5' : 'top-4 px-2 py-1'} rounded-full ${
+                        item.tagAlign === 'left' ? (isOverlayMode ? 'left-4' : 'left-4') : (isOverlayMode ? 'right-4' : 'right-4')
                       } ${isOverlayMode ? 'bg-background-muted backdrop-blur-sm' : 'bg-background-muted'}`}>
-                        <span className={`text-xs font-mono ${isOverlayMode ? 'text-text-muted' : 'text-text-muted'}`}>{item.getTag()}</span>
+                        <span className={`${isOverlayMode ? 'text-xs' : 'text-xs'} font-mono text-text-muted`}>{item.getTag()}</span>
                       </div>
                     )}
                     
                     {/* Icon and Label at bottom */}
                     <div className="mt-auto w-full">
-                      <IconComponent className={`${isOverlayMode ? 'w-8 h-8 mb-3' : 'w-6 h-6 mb-2'}`} />
-                      <h2 className={`font-light text-left ${isOverlayMode ? 'text-3xl' : 'text-2xl'}`}>{item.label}</h2>
+                      <IconComponent className={`${isOverlayMode ? 'w-7 h-7 mb-2' : 'w-6 h-6 mb-2'}`} />
+                      <h2 className={`font-light text-left ${isOverlayMode ? 'text-2xl' : 'text-2xl'}`}>{item.label}</h2>
                     </div>
                   </motion.button>
                 </motion.div>

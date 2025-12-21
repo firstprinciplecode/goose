@@ -95,7 +95,62 @@ interface MatrixContextType {
   getDebugInfo: () => Record<string, any>;
 }
 
-const MatrixContext = createContext<MatrixContextType | null>(null);
+// Fallback no-op context to keep UI stable when MatrixProvider is absent (e.g., Matrix removed).
+const defaultContext: MatrixContextType = {
+  isConnected: false,
+  isReady: false,
+  currentUser: null,
+  friends: [],
+  rooms: [],
+  gooseInstances: [],
+  login: async () => {},
+  register: async () => {},
+  logout: async () => {},
+  searchUsers: async () => [],
+  addFriend: async () => {},
+  createAISession: async () => '',
+  createSpace: async () => '',
+  createRoom: async () => '',
+  getSpaceChildren: async () => [],
+  addChildToSpace: async () => {},
+  removeChildFromSpace: async () => {},
+  joinRoom: async () => {},
+  leaveRoom: async () => {},
+  inviteToRoom: async () => {},
+  inviteToSpace: async () => {},
+  sendMessage: async () => {},
+  sendAIPrompt: async () => {},
+  setAvatar: async () => '',
+  removeAvatar: async () => {},
+  setDisplayName: async () => {},
+  setRoomName: async () => {},
+  setRoomTopic: async () => {},
+  setRoomAvatar: async () => '',
+  removeRoomAvatar: async () => {},
+  sendGooseMessage: async () => '',
+  sendTaskRequest: async () => '',
+  sendTaskResponse: async () => '',
+  sendCollaborationInvite: async () => '',
+  acceptCollaborationInvite: async () => '',
+  declineCollaborationInvite: async () => '',
+  createGooseCollaborationRoom: async () => '',
+  announceCapabilities: async () => '',
+  findDirectMessageRoom: () => null,
+  getOrCreateDirectMessageRoom: async () => '',
+  onMessage: () => () => {},
+  onAIMessage: () => () => {},
+  onGooseMessage: () => () => {},
+  onGooseMention: () => () => {},
+  onSessionMessage: () => () => {},
+  onPresenceChange: () => () => {},
+  getRoomHistory: async () => [],
+  getRoomHistoryAsGooseMessages: async () => [],
+  getPendingInvitedRooms: () => [],
+  debugGooseMessage: async () => {},
+  getDebugInfo: () => ({}),
+};
+
+const MatrixContext = createContext<MatrixContextType>(defaultContext);
 
 interface MatrixProviderProps {
   children: ReactNode;
@@ -111,6 +166,11 @@ export const MatrixProvider: React.FC<MatrixProviderProps> = ({ children, matrix
   const [gooseInstances, setGooseInstances] = useState<GooseInstance[]>([]);
 
   useEffect(() => {
+    // If no matrixService is provided (Matrix disabled), just provide defaults.
+    if (!matrixService) {
+      return;
+    }
+
     // Initialize Matrix service
     matrixService.initialize().catch(console.error);
 
@@ -503,11 +563,7 @@ export const MatrixProvider: React.FC<MatrixProviderProps> = ({ children, matrix
     getDebugInfo,
   };
 
-  return (
-    <MatrixContext.Provider value={contextValue}>
-      {children}
-    </MatrixContext.Provider>
-  );
+  return <MatrixContext.Provider value={contextValue}>{children}</MatrixContext.Provider>;
 };
 
 export const useMatrix = (): MatrixContextType => {

@@ -55,6 +55,12 @@ type ElectronAPI = {
     recipe?: Recipe,
     viewType?: string
   ) => void;
+  createSettingsWindow: (
+    options?: { section?: string }
+  ) => Promise<{ success: boolean; windowId?: number; error?: string }>;
+  createPreferencesWindow: (
+    options?: { section?: string }
+  ) => Promise<{ success: boolean; windowId?: number; error?: string }>;
   logInfo: (txt: string) => void;
   showNotification: (data: NotificationData) => void;
   showMessageBox: (options: MessageBoxOptions) => Promise<MessageBoxResponse>;
@@ -187,6 +193,26 @@ const electronAPI: ElectronAPI = {
         'No config provided by main process. This may indicate an initialization issue.'
       );
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        sessionId:'debug-session',
+        runId:'pre-fix',
+        hypothesisId:'A',
+        location:'preload.ts:getConfig',
+        message:'Config snapshot for renderer',
+        data:{
+          hasConfig:Boolean(config && Object.keys(config).length>0),
+          keys: Object.keys(config || {}).filter(k => k.toLowerCase().includes('supabase')).slice(0,10),
+          supabaseUrl: (config as any)?.SUPABASE_URL ?? (config as any)?.VITE_SUPABASE_URL ?? null,
+          supabaseAnon: (config as any)?.SUPABASE_ANON_KEY ?? (config as any)?.VITE_SUPABASE_ANON_KEY ?? null
+        },
+        timestamp:Date.now()
+      })
+    }).catch(()=>{});
+    // #endregion
     return config;
   },
   hideWindow: () => ipcRenderer.send('hide-window'),
@@ -200,6 +226,10 @@ const electronAPI: ElectronAPI = {
     viewType?: string
   ) =>
     ipcRenderer.send('create-chat-window', query, dir, version, resumeSessionId, recipe, viewType),
+  createSettingsWindow: (options?: { section?: string }) =>
+    ipcRenderer.invoke('create-settings-window', options),
+  createPreferencesWindow: (options?: { section?: string }) =>
+    ipcRenderer.invoke('create-preferences-window', options),
   logInfo: (txt: string) => ipcRenderer.send('logInfo', txt),
   showNotification: (data: NotificationData) => ipcRenderer.send('notify', data),
   showMessageBox: (options: MessageBoxOptions) => ipcRenderer.invoke('show-message-box', options),

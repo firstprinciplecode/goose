@@ -75,6 +75,9 @@ function shouldSetupUpdater(): boolean {
   return UPDATES_ENABLED || process.env.ENABLE_DEV_UPDATES === 'true';
 }
 
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 // Define temp directory for pasted images
 const gooseTempDir = path.join(app.getPath('temp'), 'goose-pasted-images');
 
@@ -487,7 +490,155 @@ let appConfig = {
   GOOSE_WORKING_DIR: '',
   // If GOOSE_ALLOWLIST_WARNING env var is not set, defaults to false (strict blocking mode)
   GOOSE_ALLOWLIST_WARNING: process.env.GOOSE_ALLOWLIST_WARNING === 'true',
+  SUPABASE_URL: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
 };
+
+type SettingsWindowKind = 'preferences' | 'compact';
+
+const settingsWindowSubscribers = new Map<SettingsWindowKind, Set<number>>();
+
+const SETTINGS_WINDOW_OPENED_CHANNEL = 'settings-window-opened';
+const SETTINGS_WINDOW_CLOSED_CHANNEL = 'settings-window-closed';
+
+function addSettingsWindowSubscriber(kind: SettingsWindowKind, windowId: number) {
+  const set = settingsWindowSubscribers.get(kind) ?? new Set<number>();
+  set.add(windowId);
+  settingsWindowSubscribers.set(kind, set);
+}
+
+function notifySettingsWindowSubscribers(kind: SettingsWindowKind, channel: string) {
+  const subscribers = settingsWindowSubscribers.get(kind);
+  if (!subscribers || subscribers.size === 0) return;
+
+  for (const id of subscribers) {
+    const win = BrowserWindow.fromId(id);
+    if (!win || win.isDestroyed()) continue;
+    try {
+      win.webContents.send(channel, kind);
+    } catch (e) {
+      console.warn(`[Main] Failed to notify window ${id} on ${channel}:`, e);
+    }
+  }
+}
+
+async function createOrFocusSettingsWindow(
+  kind: SettingsWindowKind,
+  options?: { section?: string },
+  sourceWindowId?: number
+): Promise<{ success: boolean; windowId?: number; error?: string }> {
+  try {
+    if (typeof sourceWindowId === 'number') {
+      addSettingsWindowSubscriber(kind, sourceWindowId);
+    }
+
+    const existingWindows = BrowserWindow.getAllWindows();
+
+    // Check if a matching settings window already exists
+    const existingSettingsWindow = existingWindows.find((win) => {
+      const url = win.webContents.getURL();
+      const isSettings = url.includes('/settings');
+      const isCompact = url.includes('compact=true');
+      return kind === 'compact' ? isSettings && isCompact : isSettings && !isCompact;
+    });
+
+    if (existingSettingsWindow) {
+      if (existingSettingsWindow.isMinimized()) existingSettingsWindow.restore();
+      existingSettingsWindow.focus();
+      notifySettingsWindowSubscribers(kind, SETTINGS_WINDOW_OPENED_CHANNEL);
+      return { success: true, windowId: existingSettingsWindow.id };
+    }
+
+    // Get port from existing window or use default
+    let port = 0;
+    if (existingWindows.length > 0) {
+      try {
+        const config = await existingWindows[0].webContents.executeJavaScript(
+          `window.electron.getConfig()`
+        );
+        if (config) {
+          port = config.GOOSE_PORT;
+        }
+      } catch (e) {
+        console.error('Failed to get config from existing window:', e);
+      }
+    }
+
+    const stateFile = kind === 'compact' ? 'settings-window-state.json' : 'preferences-window-state.json';
+    const settingsWindowState = windowStateKeeper({
+      defaultWidth: 900,
+      defaultHeight: 700,
+      file: stateFile,
+    });
+
+    const settingsWindow = new BrowserWindow({
+      title: kind === 'compact' ? 'Settings' : 'Preferences',
+      titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'default',
+      trafficLightPosition: process.platform === 'darwin' ? { x: 20, y: 16 } : undefined,
+      vibrancy: process.platform === 'darwin' ? 'window' : undefined,
+      frame: process.platform !== 'darwin',
+      x: settingsWindowState.x,
+      y: settingsWindowState.y,
+      width: settingsWindowState.width,
+      height: settingsWindowState.height,
+      minWidth: 700,
+      minHeight: 500,
+      resizable: true,
+      useContentSize: true,
+      icon: path.join(__dirname, '../images/icon'),
+      webPreferences: {
+        spellcheck: true,
+        preload: path.join(__dirname, 'preload.js'),
+        webSecurity: true,
+        nodeIntegration: false,
+        contextIsolation: true,
+        additionalArguments: [
+          JSON.stringify({
+            ...appConfig,
+            GOOSE_PORT: port,
+            GOOSE_WORKING_DIR: existingWindows[0]
+              ? await existingWindows[0].webContents.executeJavaScript(
+                  `window.appConfig.get('GOOSE_WORKING_DIR')`
+                )
+              : '',
+            SETTINGS_COMPACT_MODE: kind === 'compact',
+            SETTINGS_WINDOW: true,
+            SETTINGS_WINDOW_KIND: kind,
+          }),
+        ],
+        partition: 'persist:goose',
+      },
+    });
+
+    settingsWindowState.manage(settingsWindow);
+
+    const url = MAIN_WINDOW_VITE_DEV_SERVER_URL
+      ? new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
+      : pathToFileURL(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+
+    // Use HashRouter format
+    const sectionParam = options?.section ? `section=${encodeURIComponent(options.section)}` : '';
+    if (kind === 'compact') {
+      url.hash = sectionParam ? `/settings?compact=true&${sectionParam}` : '/settings?compact=true';
+    } else {
+      url.hash = sectionParam ? `/settings?${sectionParam}` : '/settings';
+    }
+    const formattedUrl = formatUrl(url);
+    log.info('Opening settings window URL: ', formattedUrl);
+    await settingsWindow.loadURL(formattedUrl);
+
+    notifySettingsWindowSubscribers(kind, SETTINGS_WINDOW_OPENED_CHANNEL);
+    settingsWindow.on('closed', () => {
+      notifySettingsWindowSubscribers(kind, SETTINGS_WINDOW_CLOSED_CHANNEL);
+      settingsWindowSubscribers.delete(kind);
+    });
+
+    return { success: true, windowId: settingsWindow.id };
+  } catch (error) {
+    console.error('Error creating settings window:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
 
 const windowMap = new Map<number, BrowserWindow>();
 
@@ -798,10 +949,11 @@ const createChat = async (
           mainWindow.webContents.send('recipe-decode-error', 'Failed to decode recipe');
         }
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
+        const message = getErrorMessage(error);
         console.error('[Main] Error decoding recipe:', error);
         // Send error to renderer
-        mainWindow.webContents.send('recipe-decode-error', error.message || 'Unknown error');
+        mainWindow.webContents.send('recipe-decode-error', message || 'Unknown error');
       });
   }
 
@@ -1172,14 +1324,11 @@ ipcMain.handle('create-browser-view', async (event, url: string, bounds: { x: nu
         // Enable additional features for better website compatibility
         webgl: true,
         plugins: false,
-        java: false,
         // Use a separate session for better isolation and compatibility
         partition: 'persist:browserview',
         // Enable additional web features for modern websites
         backgroundThrottling: false,
         offscreen: false,
-        // Enable additional Chromium features for better compatibility
-        enableRemoteModule: false,
         sandbox: false,
         // Enable modern web APIs
         enableWebSQL: false,
@@ -1226,9 +1375,10 @@ ipcMain.handle('create-browser-view', async (event, url: string, bounds: { x: nu
     
     console.log('[Main] BrowserView created successfully with ID:', viewId);
     return { viewId, success: true };
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
     console.error('Error creating browser view:', error);
-    return { viewId: null, success: false, error: error.message };
+    return { viewId: null, success: false, error: message };
   }
 });
 
@@ -1445,9 +1595,10 @@ ipcMain.handle('create-iframe-backdrop', async (event) => {
     }
     
     return { success: true, backdropData };
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
     console.error('Error creating screenshot backdrop:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   }
 });
 
@@ -1691,11 +1842,14 @@ ipcMain.handle('create-child-webviewer', async (event, url: string, bounds: { x:
       });
     });
 
-    childWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    childWindow.webContents.on(
+      'did-fail-load',
+      (_event: Electron.Event, _errorCode: number, errorDescription: string) => {
       mainWindow.webContents.send('child-webviewer-error', actualViewerId, errorDescription);
-    });
+      }
+    );
 
-    childWindow.webContents.on('page-title-updated', (event, title) => {
+    childWindow.webContents.on('page-title-updated', (_event: Electron.Event, title: string) => {
       mainWindow.webContents.send('child-webviewer-title', actualViewerId, title);
     });
 
@@ -1712,9 +1866,10 @@ ipcMain.handle('create-child-webviewer', async (event, url: string, bounds: { x:
     console.log('[Main] Child webviewer window created successfully:', actualViewerId);
     return { success: true, viewerId: actualViewerId };
 
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
     console.error('[Main] Error creating child webviewer window:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   }
 });
 
@@ -1772,17 +1927,10 @@ ipcMain.handle('update-child-webviewer-bounds', async (event, viewerId: string, 
     const childWindow = childWindows.get(viewerId);
     if (!childWindow || childWindow.isDestroyed()) return false;
 
-    const mainBounds = mainWindow.getBounds();
-    
     // The bounds from React are already relative to the main window's content area
     // We need to convert them to absolute screen coordinates by adding main window position
     // BUT we also need to account for the window frame (title bar, etc.)
     const contentBounds = mainWindow.getContentBounds();
-    const frameOffset = {
-      x: contentBounds.x - mainBounds.x,
-      y: contentBounds.y - mainBounds.y
-    };
-    
     // Convert relative bounds to absolute screen coordinates
     const absoluteBounds = {
       x: contentBounds.x + bounds.x,
@@ -2149,9 +2297,10 @@ ipcMain.handle('create-dock-window', async (event) => {
     console.log('[Main] Dock window created successfully');
     return { success: true, windowId: dockWindow.id };
 
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
     console.error('[Main] Error creating dock window:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   }
 });
 
@@ -2244,10 +2393,10 @@ ipcMain.handle('get-goosed-host-port', async (event) => {
   if (!windowId) {
     return null;
   }
-  const client = goosedClients.get(windowId);
-  if (!client) {
-    return null;
-  }
+  const directClient = goosedClients.get(windowId);
+  const client = directClient ?? goosedClients.values().next().value;
+  if (!client) return null;
+
   await checkServerStatus(client);
   return client.getConfig().baseUrl || null;
 });
@@ -2784,9 +2933,10 @@ ipcMain.handle('show-save-dialog', async (_event, options) => {
   try {
     const result = await dialog.showSaveDialog(options);
     return result;
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
     console.error('Error showing save dialog:', error);
-    return { cancelled: true, error: error.message };
+    return { cancelled: true, error: message };
   }
 });
 
@@ -2794,9 +2944,10 @@ ipcMain.handle('show-open-dialog', async (_event, options) => {
   try {
     const result = await dialog.showOpenDialog(options);
     return result;
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
     console.error('Error showing open dialog:', error);
-    return { cancelled: true, error: error.message };
+    return { cancelled: true, error: message };
   }
 });
 
@@ -2912,7 +3063,7 @@ async function appMain() {
           // Images from our app and data: URLs (for base64 images)
           "img-src 'self' data: https:;" +
           // Connect to our local API, localhost apps, and specific external services
-          "connect-src 'self' http://127.0.0.1:* http://localhost:* ws://localhost:* wss://localhost:* https://api.github.com https://github.com https://objects.githubusercontent.com" +
+          "connect-src 'self' http://127.0.0.1:* http://localhost:* ws://localhost:* wss://localhost:* https://api.github.com https://github.com https://objects.githubusercontent.com https://*.supabase.co wss://*.supabase.co;" +
           // Don't allow any plugins
           "object-src 'none';" +
           // Allow all frames (iframes) including localhost
@@ -2979,16 +3130,15 @@ async function appMain() {
   // App menu
   const appMenu = menu?.items.find((item) => item.label === 'Goose');
   if (appMenu?.submenu) {
-    // add Settings to app menu after About
+    // add Preferences to app menu after About
     appMenu.submenu.insert(1, new MenuItem({ type: 'separator' }));
     appMenu.submenu.insert(
       1,
       new MenuItem({
-        label: 'Settings',
+        label: process.platform === 'darwin' ? 'Preferences…' : 'Settings',
         accelerator: 'CmdOrCtrl+,',
         click() {
-          const focusedWindow = BrowserWindow.getFocusedWindow();
-          if (focusedWindow) focusedWindow.webContents.send('set-view', 'settings');
+          void createOrFocusSettingsWindow('preferences');
         },
       })
     );
@@ -3163,6 +3313,18 @@ async function appMain() {
 
     // Pass recipe as part of viewOptions when viewType is recipeEditor
     createChat(app, query, dir, version, resumeSessionId, recipe, viewType);
+  });
+
+  // Create settings window (compact mode) - used by "Compact view" toggle
+  ipcMain.handle('create-settings-window', async (event, options?: { section?: string }) => {
+    const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+    return createOrFocusSettingsWindow('compact', options, sourceWindow?.id);
+  });
+
+  // Create preferences window (full settings) - used by Cmd/Ctrl + ,
+  ipcMain.handle('create-preferences-window', async (event, options?: { section?: string }) => {
+    const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+    return createOrFocusSettingsWindow('preferences', options, sourceWindow?.id);
   });
 
   ipcMain.on('notify', (_event, data) => {
@@ -3352,7 +3514,7 @@ async function appMain() {
   });
 
   // Handle spell checking requests using system spell checker
-  ipcMain.handle('spell-check', async (event, word: string) => {
+ipcMain.handle('spell-check', async (_event, word: string) => {
     try {
       console.log('[Main] System spell check request for word:', word);
       
@@ -3381,11 +3543,11 @@ async function appMain() {
             
             let output = '';
             
-            aspellProcess.stdout.on('data', (data) => {
+            aspellProcess.stdout.on('data', (data: Buffer) => {
               output += data.toString();
             });
 
-            aspellProcess.on('close', (code) => {
+            aspellProcess.on('close', (_code: number | null) => {
               // Parse aspell output
               const lines = output.split('\n').filter(line => line.trim());
               let isCorrect = true;
@@ -3406,7 +3568,7 @@ async function appMain() {
               resolve(isCorrect);
             });
 
-            aspellProcess.on('error', (error) => {
+            aspellProcess.on('error', (error: Error) => {
               console.error('[Main] aspell error:', error);
               resolve(true); // Default to correct if aspell not available
             });
@@ -3433,18 +3595,18 @@ async function appMain() {
             
             let output = '';
             
-            hunspellProcess.stdout.on('data', (data) => {
+            hunspellProcess.stdout.on('data', (data: Buffer) => {
               output += data.toString();
             });
 
-            hunspellProcess.on('close', (code) => {
+            hunspellProcess.on('close', (_code: number | null) => {
               // hunspell returns "*" for correct words, "&" for incorrect
               const isCorrect = output.includes('*') || output.trim() === '';
               console.log('[Main] Windows spell check result for', word, ':', isCorrect);
               resolve(isCorrect);
             });
 
-            hunspellProcess.on('error', (error) => {
+            hunspellProcess.on('error', (error: Error) => {
               console.error('[Main] hunspell not available, defaulting to correct:', error);
               resolve(true); // Default to correct if hunspell not available
             });
@@ -3470,11 +3632,11 @@ async function appMain() {
             
             let output = '';
             
-            aspellProcess.stdout.on('data', (data) => {
+            aspellProcess.stdout.on('data', (data: Buffer) => {
               output += data.toString();
             });
 
-            aspellProcess.on('close', (code) => {
+            aspellProcess.on('close', (_code: number | null) => {
               // Parse aspell output
               const lines = output.split('\n').filter(line => line.trim());
               let isCorrect = true;
@@ -3493,7 +3655,7 @@ async function appMain() {
               resolve(isCorrect);
             });
 
-            aspellProcess.on('error', (error) => {
+            aspellProcess.on('error', (error: Error) => {
               console.error('[Main] aspell error:', error);
               resolve(true); // Default to correct if aspell not available
             });
@@ -3519,7 +3681,7 @@ async function appMain() {
     }
   });
 
-  ipcMain.handle('spell-suggestions', async (event, word: string) => {
+ipcMain.handle('spell-suggestions', async (_event, word: string) => {
     try {
       console.log('[Main] System spell suggestions request for word:', word);
       
@@ -3548,11 +3710,11 @@ async function appMain() {
             
             let output = '';
             
-            aspellProcess.stdout.on('data', (data) => {
+            aspellProcess.stdout.on('data', (data: Buffer) => {
               output += data.toString();
             });
 
-            aspellProcess.on('close', (code) => {
+            aspellProcess.on('close', (_code: number | null) => {
               // Parse aspell output for suggestions
               const lines = output.split('\n').filter(line => line.trim());
               let suggestions: string[] = [];
@@ -3577,7 +3739,7 @@ async function appMain() {
               resolve(suggestions);
             });
 
-            aspellProcess.on('error', (error) => {
+            aspellProcess.on('error', (error: Error) => {
               console.error('[Main] aspell error getting suggestions:', error);
               resolve([]); // Return empty array on error
             });
@@ -3603,11 +3765,11 @@ async function appMain() {
             
             let output = '';
             
-            hunspellProcess.stdout.on('data', (data) => {
+            hunspellProcess.stdout.on('data', (data: Buffer) => {
               output += data.toString();
             });
 
-            hunspellProcess.on('close', (code) => {
+            hunspellProcess.on('close', (_code: number | null) => {
               // Parse hunspell suggestions
               const lines = output.split('\n').filter(line => line.trim());
               const suggestions = lines.slice(0, 5); // Limit to 5 suggestions
@@ -3616,7 +3778,7 @@ async function appMain() {
               resolve(suggestions);
             });
 
-            hunspellProcess.on('error', (error) => {
+            hunspellProcess.on('error', (error: Error) => {
               console.error('[Main] hunspell not available for suggestions:', error);
               resolve([]); // Return empty array if hunspell not available
             });
@@ -3675,12 +3837,12 @@ async function appMain() {
         
         let errorOutput = '';
         
-        gitProcess.stderr.on('data', (data) => {
+        gitProcess.stderr.on('data', (data: Buffer) => {
           errorOutput += data.toString();
         });
         
-        gitProcess.on('close', (code) => {
-          if (code === 0) {
+        gitProcess.on('close', (_code: number | null) => {
+          if (_code === 0) {
             console.log('[Main] Repository cloned successfully to:', localPath);
             resolve({ success: true, localPath });
           } else {
@@ -3689,15 +3851,16 @@ async function appMain() {
           }
         });
         
-        gitProcess.on('error', (error) => {
+        gitProcess.on('error', (error: Error) => {
           console.error('[Main] Git process error:', error);
-          resolve({ success: false, error: error.message });
+          resolve({ success: false, error: getErrorMessage(error) });
         });
       });
       
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       console.error('[Main] Error cloning repository:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   });
 
@@ -3903,9 +4066,10 @@ async function appMain() {
       console.log('[Main] Project analysis complete:', analysis);
       return { success: true, ...analysis };
       
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       console.error('[Main] Error analyzing project:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   });
 
@@ -3956,16 +4120,16 @@ async function appMain() {
         let output = '';
         let errorOutput = '';
         
-        installProcess.stdout.on('data', (data) => {
+        installProcess.stdout.on('data', (data: Buffer) => {
           output += data.toString();
         });
         
-        installProcess.stderr.on('data', (data) => {
+        installProcess.stderr.on('data', (data: Buffer) => {
           errorOutput += data.toString();
         });
         
-        installProcess.on('close', (code) => {
-          if (code === 0) {
+        installProcess.on('close', (_code: number | null) => {
+          if (_code === 0) {
             console.log('[Main] Dependencies installed successfully');
             resolve({ success: true });
           } else {
@@ -3974,15 +4138,16 @@ async function appMain() {
           }
         });
         
-        installProcess.on('error', (error) => {
+        installProcess.on('error', (error: Error) => {
           console.error('[Main] Install process error:', error);
-          resolve({ success: false, error: error.message });
+          resolve({ success: false, error: getErrorMessage(error) });
         });
       });
       
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       console.error('[Main] Error installing dependencies:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   });
 
@@ -4000,9 +4165,10 @@ async function appMain() {
       console.log('[Main] App configuration saved to:', configPath);
       return { success: true };
       
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       console.error('[Main] Error saving app configuration:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   });
 
@@ -4013,13 +4179,13 @@ async function appMain() {
       const lsof = spawn('lsof', ['-ti', `:${port}`]);
       
       let pids = '';
-      lsof.stdout.on('data', (data) => {
+      lsof.stdout.on('data', (data: Buffer) => {
         pids += data.toString();
       });
       
       return new Promise((resolve) => {
-        lsof.on('close', (code) => {
-          if (code === 0 && pids.trim()) {
+        lsof.on('close', (_code: number | null) => {
+          if (_code === 0 && pids.trim()) {
             const pidList = pids.trim().split('\n').filter(pid => pid.trim());
             resolve({ hasConflict: true, pids: pidList });
           } else {
@@ -4027,7 +4193,7 @@ async function appMain() {
           }
         });
       });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[Main] Error checking port conflict:', error);
       return { hasConflict: false, pids: [] };
     }
@@ -4040,25 +4206,26 @@ async function appMain() {
       const lsof = spawn('lsof', ['-ti', `:${port}`]);
       
       let pids = '';
-      lsof.stdout.on('data', (data) => {
+      lsof.stdout.on('data', (data: Buffer) => {
         pids += data.toString();
       });
       
       return new Promise((resolve) => {
-        lsof.on('close', (code) => {
-          if (code === 0 && pids.trim()) {
+        lsof.on('close', (_code: number | null) => {
+          if (_code === 0 && pids.trim()) {
             const pidList = pids.trim().split('\n').filter(pid => pid.trim());
             let killedCount = 0;
-            let errors = [];
+            const errors: string[] = [];
             
             pidList.forEach(pid => {
               try {
                 process.kill(parseInt(pid), 'SIGTERM');
                 console.log(`[Main] Killed process ${pid} on port ${port}`);
                 killedCount++;
-              } catch (error) {
-                console.log(`[Main] Could not kill process ${pid}:`, error.message);
-                errors.push(`PID ${pid}: ${error.message}`);
+              } catch (error: unknown) {
+                const message = getErrorMessage(error);
+                console.log(`[Main] Could not kill process ${pid}:`, message);
+                errors.push(`PID ${pid}: ${message}`);
               }
             });
             
@@ -4073,9 +4240,10 @@ async function appMain() {
           }
         });
       });
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       console.error('[Main] Error killing port processes:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   });
 
@@ -4133,9 +4301,10 @@ async function appMain() {
       console.log('[Main] App launched successfully');
       return { success: true };
       
-    } catch (error) {
-      console.error('[Main] Error launching app:', error);
-      return { success: false, error: error.message };
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    console.error('[Main] Error launching app:', error);
+    return { success: false, error: message };
     }
   });
 
@@ -4171,24 +4340,25 @@ async function appMain() {
           const killPort = spawn('lsof', ['-ti', `:${port}`]);
           
           let pids = '';
-          killPort.stdout.on('data', (data) => {
+          killPort.stdout.on('data', (data: Buffer) => {
             pids += data.toString();
           });
           
-          killPort.on('close', (code) => {
-            if (code === 0 && pids.trim()) {
+          killPort.on('close', (_code: number | null) => {
+            if (_code === 0 && pids.trim()) {
               const pidList = pids.trim().split('\n');
               pidList.forEach(pid => {
                 try {
                   process.kill(parseInt(pid), 'SIGTERM');
                   console.log(`[Main] Killed process ${pid} on port ${port}`);
-                } catch (error) {
-                  console.log(`[Main] Could not kill process ${pid}:`, error.message);
+                } catch (error: unknown) {
+                  const message = getErrorMessage(error);
+                  console.log(`[Main] Could not kill process ${pid}:`, message);
                 }
               });
             }
           });
-        } catch (error) {
+        } catch (error: unknown) {
           console.warn('[Main] Could not kill processes on port:', error);
         }
       }
@@ -4199,9 +4369,10 @@ async function appMain() {
       console.log('[Main] App stopped successfully');
       return { success: true };
       
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       console.error('[Main] Error stopping app:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   });
 
@@ -4239,9 +4410,10 @@ async function appMain() {
       
       return { success: true };
       
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       console.error('[Main] Error removing app:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   });
 
@@ -4251,9 +4423,10 @@ async function appMain() {
       console.log('[Main] Showing item in folder:', itemPath);
       await shell.showItemInFolder(itemPath);
       return { success: true };
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       console.error('[Main] Error showing item in folder:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   });
 
@@ -4432,14 +4605,16 @@ ${file.content}
         console.log('[Main] LLM analysis complete:', analysis);
         return { success: true, analysis };
 
-      } catch (llmError) {
+      } catch (llmError: unknown) {
+        const message = getErrorMessage(llmError);
         console.error('[Main] LLM analysis failed:', llmError);
-        return { success: false, error: `LLM analysis failed: ${llmError.message}` };
+        return { success: false, error: `LLM analysis failed: ${message}` };
       }
 
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       console.error('[Main] Error in LLM project analysis:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   });
 
@@ -4496,9 +4671,10 @@ ${file.content}
       console.log('[Main] Loaded', apps.length, 'saved apps');
       return { success: true, apps };
       
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       console.error('[Main] Error loading saved apps:', error);
-      return { success: false, error: error.message, apps: [] };
+      return { success: false, error: message, apps: [] };
     }
   });
 
@@ -4570,25 +4746,29 @@ app.on('will-quit', async () => {
           const killPort = spawn('lsof', ['-ti', `:${appInfo.port}`]);
           
           let pids = '';
-          killPort.stdout.on('data', (data) => {
+          killPort.stdout.on('data', (data: Buffer) => {
             pids += data.toString();
           });
           
-          killPort.on('close', (code) => {
-            if (code === 0 && pids.trim()) {
+          killPort.on('close', (_code: number | null) => {
+            if (_code === 0 && pids.trim()) {
               const pidList = pids.trim().split('\n');
               pidList.forEach(pid => {
                 try {
                   process.kill(parseInt(pid), 'SIGTERM');
                   console.log(`[Main] Killed process ${pid} on port ${appInfo.port} during quit`);
-                } catch (error) {
-                  console.log(`[Main] Could not kill process ${pid} during quit:`, error.message);
+                } catch (error: unknown) {
+                  const message = getErrorMessage(error);
+                  console.log(`[Main] Could not kill process ${pid} during quit:`, message);
                 }
               });
             }
           });
-        } catch (error) {
-          console.warn(`[Main] Could not kill processes on port ${appInfo.port} during quit:`, error);
+        } catch (error: unknown) {
+          console.warn(
+            `[Main] Could not kill processes on port ${appInfo.port} during quit:`,
+            error
+          );
         }
       }
     } catch (error) {

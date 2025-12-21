@@ -7,6 +7,7 @@ export type View =
   | 'pair'
   | 'tabs'
   | 'settings'
+  | 'agent-studio'
   | 'extensions'
   | 'moreModels'
   | 'configureProviders'
@@ -15,6 +16,7 @@ export type View =
   | 'settingsV2'
   | 'sessions'
   | 'schedules'
+  | 'team'
   | 'sharedSession'
   | 'loading'
   | 'recipeEditor'
@@ -36,6 +38,7 @@ export type ViewOptions = {
   initialMessage?: string;
   resetChat?: boolean;
   shareToken?: string;
+  section?: string;
   // Matrix chat options
   matrixRoomId?: string;
   matrixRecipientId?: string;
@@ -59,13 +62,36 @@ export const createNavigationHandler = (navigate: NavigateFunction) => {
         navigate('/tabs', { state: options });
         break;
       case 'settings':
+        // Always open Customize in a separate Preferences window.
+        try {
+          const cfg = window?.electron?.getConfig?.() as Record<string, unknown> | undefined;
+          const isSettingsWindow = Boolean(cfg && cfg['SETTINGS_WINDOW']);
+          // If we're already in a dedicated settings window, navigate in-place.
+          if (isSettingsWindow) {
+            navigate('/settings', { state: options });
+            break;
+          }
+          // Otherwise open as a separate Electron window.
+          if (typeof window?.electron?.createPreferencesWindow === 'function') {
+            void window.electron.createPreferencesWindow({ section: options?.section });
+            break;
+          }
+        } catch {
+          // fall back to in-window navigation (shouldn't normally happen)
+        }
         navigate('/settings', { state: options });
+        break;
+      case 'agent-studio':
+        navigate('/agent-studio', { state: options });
         break;
       case 'sessions':
         navigate('/sessions', { state: options });
         break;
       case 'schedules':
         navigate('/schedules', { state: options });
+        break;
+      case 'team':
+        navigate('/team', { state: options });
         break;
       case 'recipes':
         navigate('/recipes', { state: options });

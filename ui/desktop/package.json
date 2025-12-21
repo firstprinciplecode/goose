@@ -53,6 +53,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/themes": "^3.2.1",
+    "@supabase/supabase-js": "^2.89.0",
     "@tanstack/react-form": "^1.19.3",
     "@tiptap/extension-blockquote": "^2.8.0",
     "@tiptap/extension-bold": "^2.8.0",

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, History, FileText, Clock, Puzzle, Settings as SettingsIcon, GripVertical, Users, Hash, ShoppingBag } from 'lucide-react';
+import { Home, History, FileText, Clock, Puzzle, Settings as SettingsIcon, GripVertical, Users, Hash, ShoppingBag, Bot } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChatSmart } from '../icons';
 import { listSessions, getSessionInsights } from '../../api';
 import { useConfig } from '../ConfigContext';
 import { listSavedRecipes } from '../../recipe/recipe_management';
 import { useNavigationCustomization } from '../settings/app/NavigationCustomizationSettings';
+import { createNavigationHandler } from '../../utils/navigationUtils';
 
 interface NavItem {
   id: string;
@@ -35,6 +36,7 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
   isOverlayMode = false
 }) => {
   const navigate = useNavigate();
+  const setView = React.useMemo(() => createNavigationHandler(navigate), [navigate]);
   const location = useLocation();
   const { extensionsList, getExtensions } = useConfig();
   const { preferences } = useNavigationCustomization();
@@ -253,60 +255,25 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
       tagAlign: 'left',
     },
     {
-      id: 'history',
-      path: '/sessions',
-      label: 'History',
-      icon: History,
-      getTag: () => `${totalSessions}`,
+      id: 'agent-studio',
+      path: '/agent-studio',
+      label: 'Agent Studio',
+      icon: Bot,
+      getTag: () => 'AI',
       tagAlign: 'left',
     },
     {
-      id: 'recipes',
-      path: '/recipes',
-      label: 'Recipes',
-      icon: FileText,
-      getTag: () => `${recipesCount}`,
-    },
-    {
-      id: 'scheduler',
-      path: '/schedules',
-      label: 'Marketplace',
-      icon: ShoppingBag,
-    },
-    {
-      id: 'extensions',
-      path: '/extensions',
-      label: 'Extensions',
-      icon: Puzzle,
-      getTag: () => {
-        if (!extensionsList || !Array.isArray(extensionsList)) {
-          return '0/0';
-        }
-        const enabled = extensionsList.filter(ext => ext.enabled).length;
-        const total = extensionsList.length;
-        return `${enabled}/${total}`;
-      },
-    },
-    {
-      id: 'peers',
-      path: '/peers',
-      label: 'Peers',
+      id: 'team',
+      path: '/team',
+      label: 'Team',
       icon: Users,
-      getTag: () => '3',
-      tagAlign: 'left',
-    },
-    {
-      id: 'channels',
-      path: '/channels',
-      label: 'Channels',
-      icon: Hash,
-      getTag: () => '7',
+      getTag: () => 'team',
       tagAlign: 'left',
     },
     {
       id: 'settings',
       path: '/settings',
-      label: 'Settings',
+      label: 'Customize',
       icon: SettingsIcon,
     },
     // Widget tiles for overlay mode
@@ -396,10 +363,10 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
       preferences.enabledItems.includes(item.id)
     );
 
-    // Filter widgets based on overlay mode
-    const filteredItems = enabledItems.filter(item => 
-      isOverlayMode || !item.isWidget
-    );
+    // Push + Left/Right should be a clean menu (no widgets)
+    const isVertical = position === 'left' || position === 'right';
+    const filteredItems =
+      !isOverlayMode && isVertical ? enabledItems.filter((item) => !item.isWidget) : enabledItems;
 
     // Order items according to user preferences
     const orderedItems = preferences.itemOrder
@@ -414,7 +381,7 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
     const result = [...orderedItems, ...itemsNotInOrder];
     console.log('CondensedNavigation: Computed navItems:', result.map(item => item.id));
     return result;
-  }, [navItemsBase, preferences.enabledItems, preferences.itemOrder, forceUpdate, isOverlayMode, currentTime, todayChatsCount, totalSessions, recipesCount, totalTokens]);
+  }, [navItemsBase, preferences.enabledItems, preferences.itemOrder, forceUpdate, isOverlayMode, position, currentTime, todayChatsCount, totalSessions, recipesCount, totalTokens]);
 
   // Listen for navigation preferences updates
   useEffect(() => {
@@ -501,7 +468,7 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
   const isVertical = position === 'left' || position === 'right';
 
   return (
-    <div className={`${isOverlayMode ? 'bg-transparent' : 'bg-background-muted'} relative z-[9998] ${isVertical ? 'h-full' : 'w-full'}`}>
+    <div className={`${(isOverlayMode || isVertical) ? 'bg-transparent' : 'bg-background-muted'} relative z-[9998] ${isVertical ? 'h-full' : 'w-full'}`}>
       <AnimatePresence initial={false}>
         {isExpanded && (
           <motion.div
@@ -543,7 +510,7 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
                 ease: "easeInOut"
               }
             }}
-            className={`${isOverlayMode ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] shadow-2xl' : 'bg-background-muted overflow-hidden'} ${
+            className={`${isOverlayMode ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] shadow-2xl' : (isVertical ? 'bg-transparent overflow-hidden' : 'bg-background-muted overflow-hidden')} ${
               !isOverlayMode && isVertical ? 'h-full lg:relative lg:z-auto absolute z-[10000] top-0 shadow-lg lg:shadow-none' : ''
             } ${
               !isOverlayMode && isVertical && position === 'left' ? 'left-0' : ''
@@ -572,13 +539,12 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
                     ? 'pr-0.5 pb-0.5'
                     : !isOverlayMode ? 'pr-0.5' : ''
               }`}
-              style={{ width: isVertical || isOverlayMode ? (isOverlayMode ? '600px' : '240px') : undefined, height: isOverlayMode ? '500px' : undefined }}
+              style={{ width: isVertical && !isOverlayMode ? '240px' : undefined }}
             >
 {isOverlayMode ? (
-                // Overlay Mode: Two-column layout with navigation rows on left, widget tiles on right
-                <div className="flex flex-row gap-4 w-full h-full items-start">
-                  {/* Left Column: Navigation Rows */}
-                  <div className="flex flex-col gap-[1px] w-80">
+                // Overlay Mode: Small icon-only tiles in a centered grid
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 p-4 max-w-3xl">
                     {navItems.filter(item => !item.isWidget).map((item, index) => {
                       const isPulsing = pulsingItems.has(item.id);
                       const isDragging = draggedItem === item.id;
@@ -594,10 +560,9 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
                           onDragOver={(e) => handleDragOver(e as unknown as React.DragEvent, item.id)}
                           onDrop={(e) => handleDrop(e as unknown as React.DragEvent, item.id)}
                           onDragEnd={handleDragEnd}
-                          initial={{ opacity: 0, x: -20, scale: 0.9 }}
+                          initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ 
                             opacity: 1, 
-                            x: 0, 
                             scale: isDragging ? 0.95 : 1,
                           }}
                           transition={{
@@ -607,7 +572,145 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
                             delay: index * 0.02,
                           }}
                           className={`
-                            relative cursor-move group w-full
+                            relative cursor-move group
+                            ${isDragOver ? 'ring-2 ring-blue-500 rounded-xl' : ''}
+                          `}
+                          style={{
+                            opacity: isDragging ? 0.5 : 1,
+                          }}
+                        >
+                          <motion.button
+                            onClick={() => {
+                              if (item.path) {
+                                if (item.id === 'settings') {
+                                  // Always open Customize in a separate Preferences window
+                                  if (typeof window?.electron?.createPreferencesWindow === 'function') {
+                                    void window.electron.createPreferencesWindow({ section: 'interface' });
+                                  }
+                                } else {
+                                  navigate(item.path);
+                                }
+                                setIsExpanded(false);
+                              }
+                            }}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className={`
+                              w-14 h-14 flex items-center justify-center
+                              relative rounded-xl transition-colors duration-200 no-drag
+                              ${active 
+                                ? 'bg-background-accent text-text-on-accent backdrop-blur-md' 
+                                : 'bg-background-default text-text-default hover:bg-background-medium backdrop-blur-md'
+                              }
+                            `}
+                            title={item.label}
+                          >
+                            {/* Icon only - no label */}
+                            {IconComponent && <IconComponent className="w-6 h-6" />}
+
+                            {/* Update indicator dot */}
+                            {isPulsing && (
+                              <motion.div
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                                className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse"
+                              />
+                            )}
+                          </motion.button>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                // Push Mode
+                isVertical ? (
+                  // Left/Right: simplified menu-only list (no drag handles, tags, or spacers)
+                  <div className="flex flex-col w-full gap-1 h-full pt-12 px-2 pb-2">
+                    {navItems.filter(item => !item.isWidget).map((item, index) => {
+                      const IconComponent = item.icon;
+                      const active = item.path ? isActive(item.path) : false;
+
+                      return (
+                        <motion.button
+                          key={item.id}
+                          onClick={() => {
+                            if (item.path) {
+                              if (item.id === 'settings') {
+                                // Always open Customize in a separate Preferences window
+                                if (typeof window?.electron?.createPreferencesWindow === 'function') {
+                                  void window.electron.createPreferencesWindow({ section: 'interface' });
+                                }
+                              } else {
+                                navigate(item.path);
+                              }
+                              setIsExpanded(false);
+                            }
+                          }}
+                          initial={{ opacity: 0, x: -12 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 350,
+                            damping: 25,
+                            delay: index * 0.015,
+                          }}
+                          whileHover={{ scale: 1.01 }}
+                          whileTap={{ scale: 0.99 }}
+                          className={`
+                            flex flex-row items-center gap-3 w-full
+                            relative rounded-lg transition-colors duration-200 no-drag
+                            px-3 py-2.5
+                            ${active 
+                              ? 'bg-background-accent text-text-on-accent' 
+                              : 'text-text-default hover:bg-background-medium'
+                            }
+                          `}
+                        >
+                          {IconComponent && <IconComponent className="w-5 h-5 flex-shrink-0" />}
+                          <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  // Top/Bottom: keep existing behavior (compact row)
+                  <div className="flex flex-row w-full gap-[1px]">
+                    {/* Top spacer for horizontal layout */}
+                    {position === 'top' && (
+                      <div className="w-[100px] bg-background-default rounded-lg flex items-center justify-center py-2.5" />
+                    )}
+
+                    {navItems.filter(item => !item.isWidget).map((item, index) => {
+                      const isPulsing = pulsingItems.has(item.id);
+                      const isDragging = draggedItem === item.id;
+                      const isDragOver = dragOverItem === item.id;
+                      const IconComponent = item.icon;
+                      const active = item.path ? isActive(item.path) : false;
+
+                      return (
+                        <motion.div
+                          key={item.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e as unknown as React.DragEvent, item.id)}
+                          onDragOver={(e) => handleDragOver(e as unknown as React.DragEvent, item.id)}
+                          onDrop={(e) => handleDrop(e as unknown as React.DragEvent, item.id)}
+                          onDragEnd={handleDragEnd}
+                          initial={{ opacity: 0, y: 20, scale: 0.9 }}
+                          animate={{ 
+                            opacity: 1, 
+                            y: 0, 
+                            scale: isDragging ? 0.95 : 1,
+                          }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 350,
+                            damping: 25,
+                            delay: index * 0.02,
+                          }}
+                          className={`
+                            relative cursor-move group flex-1
                             ${isDragOver ? 'ring-2 ring-blue-500 rounded-lg' : ''}
                           `}
                           style={{
@@ -617,7 +720,14 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
                           <motion.button
                             onClick={() => {
                               if (item.path) {
-                                navigate(item.path);
+                                if (item.id === 'settings') {
+                                  // Always open Customize in a separate Preferences window
+                                  if (typeof window?.electron?.createPreferencesWindow === 'function') {
+                                    void window.electron.createPreferencesWindow({ section: 'interface' });
+                                  }
+                                } else {
+                                  navigate(item.path);
+                                }
                                 setIsExpanded(false);
                               }
                             }}
@@ -626,31 +736,31 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
                             className={`
                               flex flex-row items-center gap-2 w-full
                               relative rounded-lg transition-colors duration-200 no-drag
-                              pl-2 pr-4 py-2.5
+                              px-2 pt-[18px] pb-[14px] min-[1800px]:pl-2 min-[1800px]:pr-4
                               ${active 
-                                ? 'bg-background-accent text-text-on-accent backdrop-blur-md' 
-                                : 'bg-background-default text-text-default hover:bg-background-medium backdrop-blur-md'
+                                ? 'bg-background-accent text-text-on-accent' 
+                                : 'bg-background-default hover:bg-background-medium'
                               }
                             `}
                           >
                             {/* Drag handle indicator */}
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity hidden min-[1800px]:block">
                               <GripVertical className="w-4 h-4 text-text-muted" />
                             </div>
 
                             {/* Icon */}
-                            {IconComponent && <IconComponent className="w-5 h-5 flex-shrink-0" />}
-                            
+                            {IconComponent && <IconComponent className="w-5 h-5 flex-shrink-0 mx-auto min-[1800px]:mx-0" />}
+
                             {/* Label */}
-                            <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                            <span className="text-sm font-medium flex-1 text-left hidden min-[1800px]:block">{item.label}</span>
 
                             {/* Tag/Badge */}
                             {item.getTag && (
-                              <div className="flex items-center gap-1">
+                              <div className="items-center gap-1 hidden min-[1800px]:flex">
                                 <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${
                                   active 
-                                    ? 'bg-background-default/20 text-text-on-accent/80 backdrop-blur-sm' 
-                                    : 'bg-background-muted text-text-muted backdrop-blur-sm'
+                                    ? 'bg-background-default/20 text-text-on-accent/80' 
+                                    : 'bg-background-muted text-text-muted'
                                 }`}>
                                   {item.getTag()}
                                 </span>
@@ -670,170 +780,13 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
                         </motion.div>
                       );
                     })}
+
+                    {/* Bottom spacer */}
+                    {(position === 'top' || position === 'bottom') && (
+                      <div className={`${position === 'top' ? 'w-[160px]' : 'flex-1 min-w-[60px]'} bg-background-default rounded-lg flex items-center justify-center py-2.5`} />
+                    )}
                   </div>
-
-                  {/* Right Column: Widget Tiles */}
-                  <div className="flex flex-col w-96">
-                    {/* Widget tiles container - matches navigation height */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" style={{ height: 'fit-content' }}>
-                      {navItems.filter(item => item.isWidget).map((item, index) => {
-                        const isDragging = draggedItem === item.id;
-                        const isDragOver = dragOverItem === item.id;
-
-                        return (
-                          <motion.div
-                            key={item.id}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e as unknown as React.DragEvent, item.id)}
-                            onDragOver={(e) => handleDragOver(e as unknown as React.DragEvent, item.id)}
-                            onDrop={(e) => handleDrop(e as unknown as React.DragEvent, item.id)}
-                            onDragEnd={handleDragEnd}
-                            initial={{ opacity: 0, x: 20, scale: 0.9 }}
-                            animate={{ 
-                              opacity: 1, 
-                              x: 0, 
-                              scale: isDragging ? 0.95 : 1,
-                            }}
-                            transition={{
-                              type: "spring",
-                              stiffness: 350,
-                              damping: 25,
-                              delay: (index + 9) * 0.02, // Delay after navigation items
-                            }}
-                            className={`
-                              relative cursor-move group w-full
-                              ${isDragOver ? 'ring-2 ring-blue-500 rounded-lg' : ''}
-                            `}
-                            style={{
-                              opacity: isDragging ? 0.5 : 1,
-                              height: '120px', // Fixed height for widget tiles
-                            }}
-                          >
-                            <div className="w-full h-full bg-background-default backdrop-blur-md rounded-lg overflow-hidden relative group">
-                              {/* Drag handle indicator */}
-                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                <GripVertical className="w-4 h-4 text-text-muted" />
-                              </div>
-                              {item.renderContent && item.renderContent()}
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                // Push Mode: Original single-column layout
-                <div className={`${isVertical ? 'flex flex-col w-full gap-[1px] h-full' : 'flex flex-row w-full gap-[1px]'}`}>
-                  {/* Top spacer for vertical layout */}
-                  {(isVertical || position === 'top') && (
-                    <div className={`${isVertical ? 'h-[60px] w-full' : 'w-[100px]'} bg-background-default rounded-lg flex items-center justify-center py-2.5`} />
-                  )}
-                  
-                  {navItems.filter(item => !item.isWidget).map((item, index) => {
-                    const isPulsing = pulsingItems.has(item.id);
-                    const isDragging = draggedItem === item.id;
-                    const isDragOver = dragOverItem === item.id;
-                    const IconComponent = item.icon;
-                    const active = item.path ? isActive(item.path) : false;
-
-                    return (
-                      <motion.div
-                        key={item.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e as unknown as React.DragEvent, item.id)}
-                        onDragOver={(e) => handleDragOver(e as unknown as React.DragEvent, item.id)}
-                        onDrop={(e) => handleDrop(e as unknown as React.DragEvent, item.id)}
-                        onDragEnd={handleDragEnd}
-                        initial={{ opacity: 0, [isVertical ? 'x' : 'y']: 20, scale: 0.9 }}
-                        animate={{ 
-                          opacity: 1, 
-                          [isVertical ? 'x' : 'y']: 0, 
-                          scale: isDragging ? 0.95 : 1,
-                        }}
-                        transition={{
-                          type: "spring",
-                          stiffness: 350,
-                          damping: 25,
-                          delay: index * 0.02,
-                        }}
-                        className={`
-                          relative cursor-move group
-                          ${isVertical ? 'w-full' : 'flex-1'}
-                          ${isDragOver ? 'ring-2 ring-blue-500 rounded-lg' : ''}
-                        `}
-                        style={{
-                          opacity: isDragging ? 0.5 : 1,
-                        }}
-                      >
-                        <motion.button
-                          onClick={() => {
-                            if (item.path) {
-                              navigate(item.path);
-                              setIsExpanded(false);
-                            }
-                          }}
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          className={`
-                            flex flex-row items-center gap-2 w-full
-                            relative rounded-lg transition-colors duration-200 no-drag
-                            ${!isVertical ? 'px-2 pt-[18px] pb-[14px] min-[1800px]:pl-2 min-[1800px]:pr-4' : 'pl-2 pr-4 py-2.5'}
-                            ${active 
-                              ? 'bg-background-accent text-text-on-accent' 
-                              : 'bg-background-default hover:bg-background-medium'
-                            }
-                          `}
-                        >
-                          {/* Drag handle indicator */}
-                          <div className={`opacity-0 group-hover:opacity-100 transition-opacity ${!isVertical ? 'hidden min-[1800px]:block' : ''}`}>
-                            <GripVertical className="w-4 h-4 text-text-muted" />
-                          </div>
-
-                          {/* Icon */}
-                          {IconComponent && <IconComponent className={`w-5 h-5 flex-shrink-0 ${!isVertical ? 'mx-auto min-[1800px]:mx-0' : ''}`} />}
-                          
-                          {/* Label */}
-                          <span className={`text-sm font-medium flex-1 text-left ${!isVertical ? 'hidden min-[1800px]:block' : ''}`}>{item.label}</span>
-
-                          {/* Tag/Badge */}
-                          {item.getTag && (
-                            <div className={`flex items-center gap-1 ${!isVertical ? 'hidden min-[1800px]:flex' : ''}`}>
-                              <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${
-                                active 
-                                  ? 'bg-background-default/20 text-text-on-accent/80' 
-                                  : 'bg-background-muted text-text-muted'
-                              }`}>
-                                {item.getTag()}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Update indicator dot */}
-                          {isPulsing && (
-                            <motion.div
-                              initial={{ scale: 0, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              exit={{ scale: 0, opacity: 0 }}
-                              className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse"
-                            />
-                          )}
-                        </motion.button>
-                      </motion.div>
-                    );
-                  })}
-                  
-                  {/* Bottom spacer */}
-                  {(isVertical || position === 'top' || position === 'bottom') && (
-                    <div className={`${
-                      isVertical 
-                        ? 'flex-1 w-full min-h-[60px]' 
-                        : position === 'top'
-                          ? 'w-[160px]'
-                          : 'flex-1 min-w-[60px]'
-                    } bg-background-default rounded-lg flex items-center justify-center py-2.5`} />
-                  )}
-                </div>
+                )
               )}
             </motion.div>
           </motion.div>

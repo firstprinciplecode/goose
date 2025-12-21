@@ -2,13 +2,10 @@ import React from 'react';
 import { 
   Plus, 
   Home,
-  History,
-  FileText,
-  Puzzle, 
+  Bot,
   Settings,
   Users,
   Hash,
-  ShoppingBag,
 } from 'lucide-react';
 import { ChatSmart } from '../icons';
 
@@ -97,45 +94,28 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
           isCollapsed={isCollapsed}
         />
         <SidebarItem
-          icon={<History className="w-5 h-5" />}
-          label="History"
-          onClick={() => handleNavigation('sessions')}
-          isCollapsed={isCollapsed}
-        />
-        <SidebarItem
-          icon={<FileText className="w-5 h-5" />}
-          label="Recipes"
-          onClick={() => handleNavigation('recipes')}
-          isCollapsed={isCollapsed}
-        />
-        <SidebarItem
-          icon={<ShoppingBag className="w-5 h-5" />}
-          label="Marketplace"
-          onClick={() => handleNavigation('schedules')}
-          isCollapsed={isCollapsed}
-        />
-        <SidebarItem
-          icon={<Puzzle className="w-5 h-5" />}
-          label="Extensions"
-          onClick={() => handleNavigation('extensions')}
+          icon={<Bot className="w-5 h-5" />}
+          label="Agent Studio"
+          onClick={() => handleNavigation('agent-studio')}
           isCollapsed={isCollapsed}
         />
         <SidebarItem
           icon={<Users className="w-5 h-5" />}
-          label="Peers"
-          onClick={() => handleNavigation('peers')}
-          isCollapsed={isCollapsed}
-        />
-        <SidebarItem
-          icon={<Hash className="w-5 h-5" />}
-          label="Channels"
-          onClick={() => handleNavigation('channels')}
+          label="Team"
+          onClick={() => handleNavigation('team')}
           isCollapsed={isCollapsed}
         />
         <SidebarItem
           icon={<Settings className="w-5 h-5" />}
-          label="Settings"
-          onClick={() => handleNavigation('settings')}
+          label="Customize"
+          onClick={() => {
+            // Always open Customize in a separate Preferences window
+            if (typeof window?.electron?.createPreferencesWindow === 'function') {
+              void window.electron.createPreferencesWindow({ section: 'interface' });
+            } else {
+              handleNavigation('settings');
+            }
+          }}
           isCollapsed={isCollapsed}
         />
       </nav>

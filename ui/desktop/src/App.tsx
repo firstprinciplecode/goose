@@ -16,6 +16,7 @@ import { ToastContainer } from 'react-toastify';
 import { GoosehintsModal } from './components/GoosehintsModal';
 import AnnouncementModal from './components/AnnouncementModal';
 import ProviderGuard from './components/ProviderGuard';
+import { SupabaseProvider } from './contexts/SupabaseContext';
 
 import { ChatType } from './types/chat';
 import Hub from './components/hub';
@@ -36,17 +37,13 @@ import 'react-toastify/dist/ReactToastify.css';
 import { useConfig, ConfigProvider } from './components/ConfigContext';
 import { ModelAndProviderProvider } from './components/ModelAndProviderContext';
 import PermissionSettingsView from './components/settings/permission/PermissionSetting';
-import { MatrixProvider } from './contexts/MatrixContext';
-import { matrixService } from './services/MatrixService';
+import TeamView from './components/TeamView';
 import { BackgroundProvider } from './contexts/BackgroundContext';
-import CollaborationInviteNotification from './components/CollaborationInviteNotification';
-import MessageNotification from './components/MessageNotification';
 
 import ExtensionsView, { ExtensionsViewOptions } from './components/extensions/ExtensionsView';
 import RecipesView from './components/recipes/RecipesView';
 import RecipeEditor from './components/recipes/RecipeEditor';
-import PeersView from './components/peers/PeersView';
-import ChannelsView from './components/channels/ChannelsView';
+import AgentStudioView from './components/agent/AgentStudioView';
 import { createNavigationHandler, View, ViewOptions } from './utils/navigationUtils';
 import {
   AgentState,
@@ -315,14 +312,8 @@ const ExtensionsRoute = () => {
   );
 };
 
-const PeersRoute = () => {
-  const navigate = useNavigate();
-  return <PeersView onClose={() => navigate('/')} />;
-};
-
-const ChannelsRoute = () => {
-  const navigate = useNavigate();
-  return <ChannelsView onClose={() => navigate('/')} />;
+const TeamRoute = () => {
+  return <TeamView />;
 };
 
 export function AppInner() {
@@ -344,6 +335,7 @@ export function AppInner() {
   }, []);
 
   const navigate = useNavigate();
+  const setView = useMemo(() => createNavigationHandler(navigate), [navigate]);
 
   const location = useLocation();
   const [_searchParams, setSearchParams] = useSearchParams();
@@ -393,7 +385,7 @@ export function AppInner() {
       openMatrixChat(roomId, senderId);
     } else {
       // For non-Matrix rooms, navigate to peers view
-      navigate('/peers', { 
+      navigate('/team', { 
         state: { 
           openChat: true, 
           roomId, 
@@ -666,9 +658,9 @@ export function AppInner() {
               }
             />
             <Route path="settings" element={<SettingsRoute />} />
+            <Route path="agent-studio" element={<AgentStudioView />} />
             <Route path="extensions" element={<ExtensionsRoute />} />
-            <Route path="peers" element={<PeersRoute />} />
-            <Route path="channels" element={<ChannelsRoute />} />
+            <Route path="team" element={<TeamRoute />} />
             <Route path="sessions" element={<SessionsRoute />} />
             <Route path="schedules" element={<SchedulesRoute />} />
             <Route path="recipes" element={<RecipesView />} />
@@ -693,8 +685,7 @@ export function AppInner() {
           setIsGoosehintsModalOpen={setIsGoosehintsModalOpen}
         />
       )}
-      <CollaborationInviteNotification />
-      <MessageNotification onOpenChat={handleOpenChat} />
+      {/* Matrix notifications removed in this branch */}
     </>
   );
 }
@@ -705,14 +696,14 @@ export default function App() {
       <BackgroundProvider>
           <DraftProvider>
             <ModelAndProviderProvider>
-              <MatrixProvider matrixService={matrixService}>
-                <TabProvider>
-                  <HashRouter>
-                    <AppInner />
-                  </HashRouter>
-                  <AnnouncementModal />
-                </TabProvider>
-              </MatrixProvider>
+                <SupabaseProvider>
+                  <TabProvider>
+                    <HashRouter>
+                      <AppInner />
+                    </HashRouter>
+                    <AnnouncementModal />
+                  </TabProvider>
+                </SupabaseProvider>
             </ModelAndProviderProvider>
           </DraftProvider>
       </BackgroundProvider>

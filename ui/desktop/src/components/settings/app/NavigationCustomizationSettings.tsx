@@ -57,16 +57,10 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     description: 'Add-ons and integrations',
   },
   {
-    id: 'peers',
-    label: 'Peers',
-    icon: Users,
-    description: 'Collaborate with others',
-  },
-  {
-    id: 'channels',
-    label: 'Channels',
-    icon: Hash,
-    description: 'Team communication channels',
+  id: 'team',
+  label: 'Team',
+  icon: Users,
+  description: 'Team communication spaces',
   },
   {
     id: 'settings',
