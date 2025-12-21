@@ -181,50 +181,42 @@ export default function TeamView() {
     [channels, selectedChannelId]
   );
 
-  // Get all people for DMs: combine existing DM channels + profiles from messages
-  const dmContacts = useMemo(() => {
-    const contactMap = new Map<string, { 
+  // Get unique people we've chatted with (from message profiles)
+  // These are the people to show under "Direct Messages"
+  const dmPeople = useMemo(() => {
+    const peopleMap = new Map<string, { 
+      userId: string;
       displayName: string; 
       email?: string; 
-      channelId?: string;
-      channelName?: string;
+      dmChannelId?: string; // If we already have a DM with them
     }>();
     
-    // First, add people from existing DM channels
-    dmChannels.forEach((dm) => {
-      // Use the channel name as display name (since we now store proper names)
-      // The channel id can help us select the right DM
-      contactMap.set(dm.id, {
-        displayName: dm.name,
-        channelId: dm.id,
-        channelName: dm.name,
+    // Add people from profiles (message senders we've seen)
+    Object.entries(profiles).forEach(([userId, p]) => {
+      // Skip ourselves
+      if (userId === session?.user?.id) return;
+      
+      const displayName = p.display_name || p.email || userId.slice(0, 8);
+      
+      // Try to find an existing DM channel with this person
+      // DM channel names might be the person's name, email, or contain their userId
+      const existingDm = dmChannels.find(c => 
+        c.name === displayName ||
+        c.name === p.email ||
+        c.name.includes(userId.slice(0, 8)) ||
+        // Also check if channel name looks like it could be for this user
+        (p.email && c.name.toLowerCase().includes(p.email.toLowerCase().split('@')[0]))
+      );
+      
+      peopleMap.set(userId, {
+        userId,
+        displayName,
+        email: p.email,
+        dmChannelId: existingDm?.id,
       });
     });
     
-    // Also add people from profiles (people we've messaged with)
-    Object.entries(profiles).forEach(([userId, p]) => {
-      if (userId === session?.user?.id) return;
-      
-      // Check if this person already has a DM channel
-      const existingDm = dmChannels.find(c => 
-        c.name === p.display_name || 
-        c.name === p.email || 
-        c.name.includes(userId.slice(0, 8))
-      );
-      
-      if (!existingDm) {
-        // Add them as a potential new DM contact
-        contactMap.set(userId, {
-          displayName: p.display_name || p.email || userId.slice(0, 8),
-          email: p.email,
-        });
-      }
-    });
-    
-    return Array.from(contactMap.entries()).map(([id, data]) => ({
-      id, // Either channelId for existing DMs or userId for new contacts
-      ...data,
-    }));
+    return Array.from(peopleMap.values());
   }, [dmChannels, profiles, session?.user?.id]);
 
   useEffect(() => {
@@ -541,34 +533,33 @@ export default function TeamView() {
           {/* Direct Messages / People Section */}
           <div>
             <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-text-muted uppercase tracking-wide">
-              <MessageCircleIcon size={12} />
-              <span>Direct Messages</span>
+              <UsersIcon size={12} />
+              <span>People</span>
             </div>
             <div className="space-y-0.5">
-              {dmContacts.length === 0 ? (
+              {dmPeople.length === 0 ? (
                 <div className="px-3 py-4 text-center">
                   <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-background-muted flex items-center justify-center">
                     <UsersIcon size={18} />
                   </div>
-                  <p className="text-xs text-text-muted">No conversations yet</p>
-                  <p className="text-[10px] text-text-muted mt-1">People you chat with will appear here</p>
+                  <p className="text-xs text-text-muted">No people yet</p>
+                  <p className="text-[10px] text-text-muted mt-1">Chat in a channel to see people here</p>
                 </div>
               ) : (
-                dmContacts.map((contact) => {
-                  // If it has channelId, it's an existing DM - just select it
-                  // Otherwise, it's a user from profiles - create/find DM
-                  const isExistingDm = !!contact.channelId;
-                  const isSelected = isExistingDm && selectedChannelId === contact.channelId;
-                  const displayName = contact.channelName || contact.displayName;
+                dmPeople.map((person) => {
+                  // Check if we're currently viewing this person's DM
+                  const isSelected = person.dmChannelId && selectedChannelId === person.dmChannelId;
                   
                   return (
                     <button
-                      key={contact.id}
+                      key={person.userId}
                       onClick={() => {
-                        if (isExistingDm && contact.channelId) {
-                          void selectChannel(contact.channelId);
+                        // If we already have a DM channel, select it
+                        // Otherwise, create/find one with this person
+                        if (person.dmChannelId) {
+                          void selectChannel(person.dmChannelId);
                         } else {
-                          void createDm(contact.id, contact.displayName);
+                          void createDm(person.userId, person.displayName);
                         }
                       }}
                       className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2.5 transition-colors ${
@@ -579,11 +570,11 @@ export default function TeamView() {
                     >
                       <div className="relative">
                         <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center text-[10px] font-medium">
-                          {displayName.slice(0, 2).toUpperCase()}
+                          {person.displayName.slice(0, 2).toUpperCase()}
                         </div>
                         <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-background-default" />
                       </div>
-                      <span className="truncate">{displayName}</span>
+                      <span className="truncate">{person.displayName}</span>
                     </button>
                   );
                 })
