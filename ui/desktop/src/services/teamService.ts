@@ -103,17 +103,32 @@ export const subscribeToMessages = (
   channelId: string,
   onMessage: (msg: TeamMessage) => void
 ) => {
-  return client
-    .channel(`messages-${channelId}`)
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` },
-      (payload) => {
-        const record = payload.new as TeamMessage;
-        onMessage(record);
-      }
-    )
-    .subscribe();
+  console.log('[Team] Setting up realtime subscription for channel:', channelId);
+  
+  const channel = client.channel(`messages-${channelId}`);
+  
+  channel.on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` },
+    (payload) => {
+      console.log('[Team] Received realtime message:', payload);
+      const record = payload.new as TeamMessage;
+      onMessage(record);
+    }
+  );
+
+  channel.subscribe((status) => {
+    console.log('[Team] Subscription status:', status);
+    if (status === 'SUBSCRIBED') {
+      console.log('[Team] ✓ Realtime subscription active for channel:', channelId);
+    } else if (status === 'CHANNEL_ERROR') {
+      console.error('[Team] ✗ Subscription error for channel:', channelId);
+    } else if (status === 'TIMED_OUT') {
+      console.error('[Team] ✗ Subscription timed out for channel:', channelId);
+    }
+  });
+
+  return channel;
 };
 
 export const fetchProfilesByUserIds = async (
