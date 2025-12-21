@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { Button } from './ui/button';
@@ -105,6 +105,17 @@ export default function TeamView() {
   const [joinCodeLoading, setJoinCodeLoading] = useState(false);
   const [joinCodeError, setJoinCodeError] = useState<string | null>(null);
   const [joinCodeSuccess, setJoinCodeSuccess] = useState(false);
+
+  // Auto-scroll to bottom of messages
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   const selectedChannel = useMemo(
     () => channels.find((c) => c.id === selectedChannelId),
@@ -598,6 +609,8 @@ export default function TeamView() {
                 </div>
               );
             })}
+            {/* Scroll anchor for auto-scroll to bottom */}
+            <div ref={messagesEndRef} />
           </div>
           <div className="border-t border-border/60 px-4 pb-6 pt-3 shrink-0 bg-background-default/70 backdrop-blur">
             <div className="w-full border border-border/50 rounded-2xl bg-background-default/80 px-3 py-2 flex flex-col gap-2">
