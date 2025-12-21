@@ -105,26 +105,42 @@ export const subscribeToMessages = (
 ) => {
   console.log('[Team] Setting up realtime subscription for channel:', channelId);
   
-  const channel = client.channel(`messages-${channelId}`);
+  // Check if realtime is connected
+  const realtimeStatus = client.realtime.connectionState();
+  console.log('[Team] Realtime connection state:', realtimeStatus);
+  
+  const channel = client.channel(`messages-${channelId}`, {
+    config: {
+      broadcast: { self: true },
+      presence: { key: '' },
+    },
+  });
   
   channel.on(
     'postgres_changes',
     { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` },
     (payload) => {
-      console.log('[Team] Received realtime message:', payload);
+      console.log('[Team] ✓ Received realtime message:', payload);
       const record = payload.new as TeamMessage;
       onMessage(record);
     }
   );
 
-  channel.subscribe((status) => {
-    console.log('[Team] Subscription status:', status);
+  // Also listen for all events on this channel for debugging
+  channel.on('system', {}, (payload) => {
+    console.log('[Team] System event:', payload);
+  });
+
+  channel.subscribe((status, err) => {
+    console.log('[Team] Subscription status:', status, err ? `Error: ${err.message}` : '');
     if (status === 'SUBSCRIBED') {
       console.log('[Team] ✓ Realtime subscription active for channel:', channelId);
     } else if (status === 'CHANNEL_ERROR') {
-      console.error('[Team] ✗ Subscription error for channel:', channelId);
+      console.error('[Team] ✗ Subscription error for channel:', channelId, err);
     } else if (status === 'TIMED_OUT') {
       console.error('[Team] ✗ Subscription timed out for channel:', channelId);
+    } else if (status === 'CLOSED') {
+      console.warn('[Team] Subscription closed for channel:', channelId);
     }
   });
 
