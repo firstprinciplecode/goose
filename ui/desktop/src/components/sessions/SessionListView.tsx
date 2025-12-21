@@ -14,6 +14,7 @@ import {
   Sparkles,
   Grid3X3,
   Clock,
+  X,
 } from 'lucide-react';
 import AvatarImage from '../AvatarImage';
 import { useMatrix } from '../../contexts/MatrixContext';
@@ -175,10 +176,11 @@ interface SessionListViewProps {
   setView: (view: View, viewOptions?: ViewOptions) => void;
   onSelectSession: (sessionId: string) => void;
   selectedSessionId?: string | null;
+  onClose?: () => void;
 }
 
 const SessionListView: React.FC<SessionListViewProps> = React.memo(
-  ({ onSelectSession, selectedSessionId }) => {
+  ({ onSelectSession, selectedSessionId, onClose }) => {
     const [sessions, setSessions] = useState<Session[]>([]);
     const [filteredSessions, setFilteredSessions] = useState<Session[]>([]);
     const [dateGroups, setDateGroups] = useState<DateGroup[]>([]);
@@ -894,25 +896,39 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(
         );
       }
 
+      // Flatten date groups into a single array with date headers and sessions
+      const gridItems: Array<{ type: 'date-header' | 'session'; label?: string; session?: Session }> = [];
+      dateGroups.forEach((group) => {
+        gridItems.push({ type: 'date-header', label: group.label });
+        group.sessions.forEach((session) => {
+          gridItems.push({ type: 'session', session });
+        });
+      });
+
       return (
-        <div className="space-y-8">
-          {dateGroups.map((group) => (
-            <div key={group.label} className="space-y-4">
-              <div className="sticky top-0 z-10 backdrop-blur-sm">
-                <h2 className="text-text-muted">{group.label}</h2>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-                {group.sessions.map((session) => (
-                  <SessionItem
-                    key={session.id}
-                    session={session}
-                    onEditClick={handleEditSession}
-                    onDeleteClick={handleDeleteSession}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+          {gridItems.map((item, index) => {
+            if (item.type === 'date-header') {
+              return (
+                <div
+                  key={`header-${item.label}-${index}`}
+                  className="col-span-full sticky top-0 z-10 backdrop-blur-sm py-2"
+                >
+                  <h2 className="text-text-muted">{item.label}</h2>
+                </div>
+              );
+            } else if (item.session) {
+              return (
+                <SessionItem
+                  key={item.session.id}
+                  session={item.session}
+                  onEditClick={handleEditSession}
+                  onDeleteClick={handleDeleteSession}
+                />
+              );
+            }
+            return null;
+          })}
         </div>
       );
     };
@@ -923,29 +939,45 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(
           <div className="flex-1 flex flex-col min-h-0">
             <div className="px-8 pb-8 pt-16">
               <div className="flex flex-col page-transition">
-                <div className="flex justify-between items-center mb-1">
-                  <h1 className="text-4xl font-light">Chat history</h1>
+                <div className="flex justify-between items-start mb-1">
+                  <div className="flex flex-col">
+                    <h1 className="text-4xl font-light">Chat history</h1>
+                  </div>
                   
-                  {/* View toggle buttons */}
-                  <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-                    <Button
-                      variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                      size="sm"
-                      onClick={() => setViewMode('grid')}
-                      className="px-3 py-1.5 h-auto"
-                    >
-                      <Grid3X3 className="w-4 h-4 mr-2" />
-                      Grid
-                    </Button>
-                    <Button
-                      variant={viewMode === 'timeline' ? 'default' : 'ghost'}
-                      size="sm"
-                      onClick={() => setViewMode('timeline')}
-                      className="px-3 py-1.5 h-auto"
-                    >
-                      <Clock className="w-4 h-4 mr-2" />
-                      Timeline
-                    </Button>
+                  {/* Right side: Close button and view toggle buttons */}
+                  <div className="flex items-center gap-2">
+                    {/* View toggle buttons */}
+                    <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+                      <Button
+                        variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setViewMode('grid')}
+                        className="px-3 py-1.5 h-auto"
+                      >
+                        <Grid3X3 className="w-4 h-4 mr-2" />
+                        Grid
+                      </Button>
+                      <Button
+                        variant={viewMode === 'timeline' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setViewMode('timeline')}
+                        className="px-3 py-1.5 h-auto"
+                      >
+                        <Clock className="w-4 h-4 mr-2" />
+                        Timeline
+                      </Button>
+                    </div>
+                    
+                    {/* Close button - top right corner */}
+                    {onClose && (
+                      <button
+                        onClick={onClose}
+                        className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-white/10 dark:hover:bg-white/10 transition-colors text-text-muted hover:text-text-default"
+                        title="Close (ESC)"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 <p className="text-sm text-text-muted mb-4">

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Bot, MessageSquare, Share2, Monitor, Settings, Palette, Users, Cog } from 'lucide-react';
+import { Bot, MessageSquare, Share2, Monitor, Settings, Palette, Users, Cog, Sparkles } from 'lucide-react';
 
 interface SettingsTile {
   id: string;
@@ -22,34 +22,34 @@ export const SettingsTileNavigation: React.FC<SettingsTileNavigationProps> = ({
 }) => {
   const settingsTiles: SettingsTile[] = [
     {
-      id: 'models',
-      label: 'Models',
+      id: 'agent-ai',
+      label: 'Agent & AI',
       icon: Bot,
-      description: 'AI models, providers & lead worker',
+      description: 'Models, providers & agent configuration',
       getTag: () => 'AI',
       tagColor: 'info',
     },
     {
-      id: 'chat',
-      label: 'Chat',
-      icon: MessageSquare,
-      description: 'Interface, modes & behavior',
-      getTag: () => 'UI',
-      tagColor: 'success',
-    },
-    {
-      id: 'sharing',
-      label: 'Session',
+      id: 'collaboration',
+      label: 'Collaboration',
       icon: Share2,
-      description: 'Sharing & collaboration settings',
+      description: 'Session sharing & collaboration',
       getTag: () => 'SYNC',
       tagColor: 'warning',
     },
     {
-      id: 'app',
-      label: 'App',
+      id: 'interface',
+      label: 'Interface',
+      icon: MessageSquare,
+      description: 'Chat UI, navigation & themes',
+      getTag: () => 'UI',
+      tagColor: 'success',
+    },
+    {
+      id: 'system',
+      label: 'System',
       icon: Monitor,
-      description: 'System preferences & updates',
+      description: 'Updates, config & preferences',
       getTag: () => 'SYS',
       tagColor: 'default',
     },

@@ -82,7 +82,7 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
             variant="outline"
             size="sm"
             disabled={isDownloading}
-            className="bg-slate-600 text-white hover:bg-slate-700"
+            className="bg-zinc-600 text-white hover:bg-zinc-700"
           >
             {isDownloading ? 'Downloading...' : 'Download'}
           </Button>

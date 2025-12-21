@@ -10,6 +10,16 @@ export const useNavigationStyle = () => {
     return (stored as NavigationStyle) || 'expanded';
   });
 
+  // Listen for changes from other instances of this hook
+  useEffect(() => {
+    const handleStyleChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ style: NavigationStyle }>;
+      setStyle(customEvent.detail.style);
+    };
+    window.addEventListener('navigation-style-changed', handleStyleChange);
+    return () => window.removeEventListener('navigation-style-changed', handleStyleChange);
+  }, []);
+
   const updateStyle = (newStyle: NavigationStyle) => {
     setStyle(newStyle);
     localStorage.setItem(STORAGE_KEY, newStyle);

@@ -10,10 +10,20 @@ export const useNavigationMode = () => {
     return (stored as NavigationMode) || 'push';
   });
 
+  // Listen for changes from other instances of this hook
+  useEffect(() => {
+    const handleModeChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ mode: NavigationMode }>;
+      setMode(customEvent.detail.mode);
+    };
+    window.addEventListener('navigation-mode-changed', handleModeChange);
+    return () => window.removeEventListener('navigation-mode-changed', handleModeChange);
+  }, []);
+
   const updateMode = (newMode: NavigationMode) => {
     setMode(newMode);
     localStorage.setItem(STORAGE_KEY, newMode);
-    // Dispatch custom event for AppLayout to listen to
+    // Dispatch custom event for AppLayout and other instances to listen to
     window.dispatchEvent(new CustomEvent('navigation-mode-changed', { 
       detail: { mode: newMode } 
     }));

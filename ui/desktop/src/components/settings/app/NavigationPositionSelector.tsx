@@ -10,6 +10,16 @@ export const useNavigationPosition = () => {
     return (stored as NavigationPosition) || 'top';
   });
 
+  // Listen for changes from other instances of this hook
+  useEffect(() => {
+    const handlePositionChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ position: NavigationPosition }>;
+      setPosition(customEvent.detail.position);
+    };
+    window.addEventListener('navigation-position-changed', handlePositionChange);
+    return () => window.removeEventListener('navigation-position-changed', handlePositionChange);
+  }, []);
+
   const updatePosition = (newPosition: NavigationPosition) => {
     setPosition(newPosition);
     localStorage.setItem(STORAGE_KEY, newPosition);

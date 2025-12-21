@@ -6,7 +6,7 @@ interface PillProps {
   className?: string;
   variant?: 'default' | 'glass' | 'solid' | 'gradient' | 'glow';
   size?: 'xs' | 'sm' | 'md' | 'lg';
-  color?: 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'slate';
+  color?: 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'zinc';
   onClick?: () => void;
   disabled?: boolean;
   animated?: boolean;
@@ -62,10 +62,10 @@ export function Pill({
       glass:
         'text-purple-700 dark:text-purple-300 hover:text-purple-800 dark:hover:text-purple-200',
     },
-    slate: {
-      gradient: 'from-slate-500 to-slate-600 hover:from-slate-600 hover:to-slate-700 text-white',
-      glow: 'bg-slate-500 hover:bg-slate-600 text-white shadow-slate-500/25 hover:shadow-slate-500/40',
-      glass: 'text-slate-700 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-200',
+    zinc: {
+      gradient: 'from-zinc-500 to-zinc-600 hover:from-zinc-600 hover:to-zinc-700 text-white',
+      glow: 'bg-zinc-500 hover:bg-zinc-600 text-white shadow-zinc-500/25 hover:shadow-zinc-500/40',
+      glass: 'text-zinc-700 dark:text-zinc-300 hover:text-zinc-800 dark:hover:text-zinc-200',
     },
   };
 

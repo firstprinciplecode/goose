@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { TabBar } from './TabBar';
 import BaseChat2 from './BaseChat2';
 import { TabSidecar } from './TabSidecar';
@@ -6,8 +7,11 @@ import MultiPanelTabSidecar from './MultiPanelTabSidecar';
 import { useTabContext } from '../contexts/TabContext';
 import { ResizableSplitter } from './Layout/ResizableSplitter';
 import { TaskExecutionProvider } from '../contexts/TaskExecutionContext';
+import { useNavigation } from './Layout/AppLayout';
+import { Terminal } from 'lucide-react';
 
 // Import SVG icons
+import UnionIcon from '../assets/Union.svg';
 import BellIcon from '../assets/bell.svg';
 
 interface TabbedChatContainerProps {
@@ -25,6 +29,10 @@ export const TabbedChatContainer: React.FC<TabbedChatContainerProps> = ({
   initialMessage,
   sidebarCollapsed = false
 }) => {
+  const location = useLocation();
+  const { isNavExpanded, setIsNavExpanded } = useNavigation();
+  // Show icons on main routes (chat view and home)
+  const isMainChatView = location.pathname === '/pair' || location.pathname === '/tabs' || location.pathname === '/';
   const {
     tabStates,
     activeTabId,
@@ -221,23 +229,54 @@ export const TabbedChatContainer: React.FC<TabbedChatContainerProps> = ({
   return (
     <TaskExecutionProvider>
       <div className={`flex flex-col h-full ${className || ''}`}>
-        {/* Row 1: Top Bar - Traffic lights spacer + blur bar + notifications */}
-        <div className="flex-shrink-0 h-11 flex items-center relative z-[60]">
-          {/* Spacer to account for traffic lights + drawer icon */}
-          <div className="w-[140px] flex-shrink-0" />
+        {/* Row 1: Top Bar - Show Launcher + Terminal icon + traffic lights spacer + blur bar + notifications */}
+        <div className="flex-shrink-0 h-11 flex items-center relative z-[100]">
+          {/* Show Launcher button - top left corner, only visible on main chat view */}
+          {isMainChatView && (
+            <button
+              onClick={() => setIsNavExpanded(!isNavExpanded)}
+                    className="fixed left-[76px] top-[6px] z-[101] w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 dark:hover:bg-white/10 transition-colors no-drag"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              title={isNavExpanded ? "Hide launcher" : "Show launcher"}
+            >
+                    <img
+                      src={UnionIcon}
+                      alt="Show Launcher"
+                      className="w-5 h-5 pointer-events-none transition-transform duration-200"
+                      style={{ transform: isNavExpanded ? 'scaleX(-1)' : 'scaleX(1)' }}
+                    />
+            </button>
+          )}
+          
+          {/* Terminal icon - new session button, only visible on main chat view */}
+          {isMainChatView && (
+            <button
+              onClick={handleNewTab}
+              className="absolute left-[112px] top-[6px] z-[101] w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 dark:hover:bg-white/10 transition-colors no-drag"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              title="New session (Ctrl+T)"
+            >
+              <Terminal className="w-5 h-5 text-text-muted hover:text-text-default pointer-events-none" />
+            </button>
+          )}
+          
+          {/* Spacer to account for traffic lights + icons (only if icons are visible) */}
+          <div className={isMainChatView ? "w-[156px] flex-shrink-0" : "w-[76px] flex-shrink-0"} />
           
           {/* Top blur bar - spans most of the width */}
           <div className="flex-1 h-9 mx-2 bg-white/60 dark:bg-black/60 rounded-2xl backdrop-blur-xl flex items-center px-4">
-            {/* Future: Add top bar content here (search, breadcrumbs, etc.) */}
+            {/* Future: Add more top bar content here (search, breadcrumbs, etc.) */}
           </div>
           
-          {/* Bell notification icon - right side */}
-          <button 
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 dark:hover:bg-white/10 transition-colors mr-2"
-            title="Notifications"
-          >
-            <img src={BellIcon} alt="Notifications" className="w-[18px] h-[18px] opacity-60 hover:opacity-100 transition-opacity" />
-          </button>
+          {/* Notifications icon - top right corner, only visible on main chat view */}
+          {isMainChatView && (
+            <button 
+              className="absolute right-2 top-[6px] z-[101] w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 dark:hover:bg-white/10 transition-colors"
+              title="Notifications"
+            >
+              <img src={BellIcon} alt="Notifications" className="w-6 h-6 opacity-60 hover:opacity-100 transition-opacity" />
+            </button>
+          )}
         </div>
 
         {/* Row 2: Tab Bar */}

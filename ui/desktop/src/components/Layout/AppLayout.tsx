@@ -45,6 +45,7 @@ const AppLayoutContent: React.FC<AppLayoutProps> = ({ setIsGoosehintsModalOpen }
   const location = useLocation();
   const safeIsMacOS = (window?.electron?.platform || 'darwin') === 'darwin';
   const sidecar = useSidecar();
+  const isSettingsRoute = location.pathname === '/settings';
   const [isNavExpanded, setIsNavExpanded] = useState(false);
   const [navigationPosition, setNavigationPosition] = useState<NavigationPosition>(() => {
     const stored = localStorage.getItem('navigation_position') as NavigationPosition | null;
@@ -414,81 +415,84 @@ const AppLayoutContent: React.FC<AppLayoutProps> = ({ setIsGoosehintsModalOpen }
     </div>
   );
 
+  // Determine layout classes based on mode
+  const isOverlay = navigationMode === 'overlay';
+  const layoutClasses = isOverlay 
+    ? 'flex flex-1 w-full h-full relative' 
+    : `flex ${flexDirection} flex-1 w-full h-full`;
+
+  // Settings should be self-contained: no global nav/drawer/top controls.
+  if (isSettingsRoute) {
+    return (
+      <NavigationContext.Provider value={{ isNavExpanded: false, setIsNavExpanded: () => {}, navigationPosition }}>
+        <div className="flex flex-1 w-full h-full">
+          <Outlet />
+        </div>
+      </NavigationContext.Provider>
+    );
+  }
+
   return (
     <NavigationContext.Provider value={{ isNavExpanded, setIsNavExpanded, navigationPosition }}>
-      {navigationMode === 'overlay' ? (
-        // Overlay Mode - Full screen content with floating navigation
-        <div className="flex flex-1 w-full h-full bg-background-muted relative">
-          {/* Main Content Area - Full Screen */}
-          {mainContent}
-          
-          {/* Overlay Navigation - Only show when expanded */}
-          {overlayNavigationComponent}
-          
-          {/* Control Buttons - Fixed position for overlay mode */}
-          <div className="absolute z-[9999] flex gap-2 top-4 right-4">
-            <Button
-              onClick={() => setIsNavExpanded(!isNavExpanded)}
-              className="no-drag hover:!bg-background-medium bg-background-default rounded-xl shadow-sm relative"
-              variant="ghost"
-              size="xs"
-              title="Toggle navigation overlay"
-            >
-              <ChevronDown className="w-4 h-4" />
-              <span className="ml-2 text-xs text-text-muted font-mono">
-                {isNavExpanded ? 'Hide launcher' : 'Show launcher'}
-              </span>
-            </Button>
-            <Button
-              onClick={handleNewWindow}
-              className="no-drag hover:!bg-background-medium bg-background-default rounded-xl shadow-sm"
-              variant="ghost"
-              size="xs"
-              title="Start a new session in a new window"
-            >
-              {safeIsMacOS ? <AppWindowMac className="w-4 h-4" /> : <AppWindow className="w-4 h-4" />}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        // Push Mode - Traditional layout with positioned navigation
-        <div className={`flex ${flexDirection} flex-1 w-full h-full bg-background-muted`}>
-          {/* Navigation placement based on position - always render but let component handle visibility */}
-          {navigationPosition === 'top' && navigationComponent}
-          {navigationPosition === 'left' && navigationComponent}
-          
-          {/* Main Content Area */}
-          {mainContent}
-          
-          {/* Navigation placement for bottom and right - always render but let component handle visibility */}
-          {navigationPosition === 'bottom' && navigationComponent}
-          {navigationPosition === 'right' && navigationComponent}
-          
-          {/* Control Buttons - position based on nav location */}
+      <div className={layoutClasses}>
+        {/* Push Mode Navigation - Top/Left */}
+        {!isOverlay && navigationPosition === 'top' && navigationComponent}
+        {!isOverlay && navigationPosition === 'left' && navigationComponent}
+        
+        {/* Main Content Area - Always in the same position in the tree */}
+        {mainContent}
+        
+        {/* Push Mode Navigation - Bottom/Right */}
+        {!isOverlay && navigationPosition === 'bottom' && navigationComponent}
+        {!isOverlay && navigationPosition === 'right' && navigationComponent}
+        
+        {/* Overlay Navigation - Only show when in overlay mode */}
+        {isOverlay && overlayNavigationComponent}
+        
+        {/* Drawer icon - Always visible on top left (except /pair where TabbedChatContainer handles it) */}
+        {location.pathname !== '/pair' && location.pathname !== '/tabs' && (
+          <button
+            onClick={() => setIsNavExpanded(!isNavExpanded)}
+            className="fixed left-[76px] top-[6px] z-[11050] w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 dark:hover:bg-white/10 transition-colors no-drag pointer-events-auto"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            title={isNavExpanded ? "Hide launcher" : "Show launcher"}
+          >
+            <img
+              src={UnionIcon}
+              alt="Show Launcher"
+              className="w-5 h-5 pointer-events-none transition-transform duration-200"
+              style={{ transform: isNavExpanded ? 'scaleX(-1)' : 'scaleX(1)' }}
+            />
+          </button>
+        )}
+
+        {/* Control Buttons - Hidden on chat/tabs/sessions/team routes to leave drawer + notif only */}
+        {(location.pathname !== '/pair' &&
+          location.pathname !== '/tabs' &&
+          location.pathname !== '/sessions' &&
+          location.pathname !== '/team') && (
           <div className={`absolute z-[9999] flex gap-2 ${
+            isOverlay ? 'top-4 right-4' :
             navigationPosition === 'top' ? 'top-4 right-4' :
             navigationPosition === 'bottom' ? 'bottom-4 right-4' :
             navigationPosition === 'left' ? (safeIsMacOS ? 'top-4 left-20' : 'top-4 left-4') :
             'top-4 right-4'
           }`}>
-            <Button
-              onClick={() => setIsNavExpanded(!isNavExpanded)}
-              className="no-drag hover:!bg-background-medium bg-background-default rounded-xl shadow-sm relative"
-              variant="ghost"
-              size="xs"
-              title="Toggle navigation"
-            >
-              {navigationPosition === 'left' ? (
-                isNavExpanded ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
-              ) : navigationPosition === 'right' ? (
-                isNavExpanded ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />
-              ) : (
-                isNavExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
-              )}
-              <span className="ml-2 text-xs text-text-muted font-mono">
-                {isNavExpanded ? 'Hide menu' : 'Show menu'}
-              </span>
-            </Button>
+            {/* Show Launcher button - only in overlay mode */}
+            {isOverlay && (
+              <Button
+                onClick={() => setIsNavExpanded(!isNavExpanded)}
+                className="no-drag hover:!bg-background-medium bg-background-default rounded-xl shadow-sm relative"
+                variant="ghost"
+                size="xs"
+                title="Toggle navigation overlay"
+              >
+                <ChevronDown className="w-4 h-4" />
+                <span className="ml-2 text-xs text-text-muted font-mono">
+                  {isNavExpanded ? 'Hide launcher' : 'Show launcher'}
+                </span>
+              </Button>
+            )}
             <Button
               onClick={handleNewWindow}
               className="no-drag hover:!bg-background-medium bg-background-default rounded-xl shadow-sm"
@@ -499,8 +503,8 @@ const AppLayoutContent: React.FC<AppLayoutProps> = ({ setIsGoosehintsModalOpen }
               {safeIsMacOS ? <AppWindowMac className="w-4 h-4" /> : <AppWindow className="w-4 h-4" />}
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </NavigationContext.Provider>
   );
 };

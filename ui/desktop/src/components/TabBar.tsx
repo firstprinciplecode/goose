@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, MessageCircle, Bot, Users, Calendar, Target, Folder } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Plus, MessageCircle, Bot, Users, Calendar, Target, Folder, History } from 'lucide-react';
 import { cn } from '../utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/Tooltip';
 import { getSession } from '../api';
@@ -166,6 +167,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   sidebarCollapsed = false,
   workingDirectory
 }) => {
+  const navigate = useNavigate();
   return (
     <div className={cn(
       "flex items-center",
@@ -236,6 +238,20 @@ export const TabBar: React.FC<TabBarProps> = ({
         title="New tab (Ctrl+T)"
       >
         <Plus className="w-3.5 h-3.5" />
+      </button>
+
+      {/* History Button - icon only, next to Plus */}
+      <button
+        onClick={() => navigate('/sessions')}
+        className={cn(
+          "flex items-center justify-center w-7 h-7 rounded-2xl",
+          "bg-neutral-900/70 dark:bg-neutral-900/70 backdrop-blur-[10px]",
+          "hover:bg-neutral-800/80 transition-colors duration-200",
+          "text-zinc-500 hover:text-zinc-300"
+        )}
+        title="View History"
+      >
+        <History className="w-3.5 h-3.5" />
       </button>
 
       {/* Spacer to push content left */}

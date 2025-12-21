@@ -10,7 +10,7 @@ const buttonVariants = cva(
       variant: {
         default: 'bg-background-accent text-text-on-accent hover:bg-background-accent/90 shadow-xs',
         destructive:
-          'bg-background-danger text-white hover:bg-background-danger/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-background-danger/60 shadow-xs',
+          'bg-black text-text-danger border border-border-danger hover:bg-zinc-950/90 focus-visible:ring-2 focus-visible:ring-border-danger/40',
         outline: 'border hover:bg-background-muted',
         secondary: 'bg-background-muted text-text-default hover:bg-background-muted/80 shadow-xs',
         ghost: 'hover:bg-background-muted dark:hover:bg-background-muted/50',

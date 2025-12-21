@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, ViewOptions } from '../../utils/navigationUtils';
 import SessionListView from './SessionListView';
 import SessionHistoryView from './SessionHistoryView';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Session } from '../../api';
 import { unifiedSessionService } from '../../services/UnifiedSessionService';
 
@@ -17,6 +17,25 @@ const SessionsView: React.FC<SessionsViewProps> = ({ setView }) => {
   const [error, setError] = useState<string | null>(null);
   const [initialSessionId, setInitialSessionId] = useState<string | null>(null);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // Handle ESC key to go back to chat
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        navigate('/pair');
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [navigate]);
+
+  const handleClose = useCallback(() => {
+    navigate('/pair');
+  }, [navigate]);
 
   const loadSessionDetails = async (sessionId: string) => {
     setIsLoadingSession(true);
@@ -98,6 +117,7 @@ const SessionsView: React.FC<SessionsViewProps> = ({ setView }) => {
       setView={setView}
       onSelectSession={handleSelectSession}
       selectedSessionId={selectedSession?.id ?? null}
+      onClose={handleClose}
     />
   );
 };

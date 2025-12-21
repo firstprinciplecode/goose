@@ -211,7 +211,6 @@ export default function ChatInput({
   // Draft functionality - get chat context and global draft context
   // We need to handle the case where ChatInput is used without ChatProvider (e.g., in Hub)
   const chatContext = useChatContext(); // This should always be available now
-  const agentIsReady = chatContext === null || chatContext.agentWaitingMessage === null;
   const draftLoadedRef = useRef(false);
 
   // Debug logging for draft context
@@ -547,6 +546,14 @@ export default function ChatInput({
     shouldSetupMatrixListeners: !!actualMatrixRoomId,
     timestamp: new Date().toISOString()
   });
+
+  const agentIsReady = useMemo(() => {
+    // Always allow input for Matrix chats or when Goose has been explicitly disabled
+    if (!gooseEnabled || isMatrixRoom) {
+      return true;
+    }
+    return chatContext === null || chatContext.agentWaitingMessage === null;
+  }, [chatContext, gooseEnabled, isMatrixRoom]);
   
   // Get Matrix context for current user information and sending functionality
   const { currentUser, sendMessage } = useMatrix();
@@ -1751,8 +1758,30 @@ export default function ChatInput({
       (displayValue.trim() ||
         pastedImages.some((img) => img.filePath && !img.error && !img.isLoading) ||
         allDroppedFiles.some((file) => !file.error && !file.isLoading));
+    
+    console.log('📝 onFormSubmit called:', {
+      canSubmit,
+      isLoading,
+      isCompacting,
+      agentIsReady,
+      gooseEnabled,
+      isMatrixRoom,
+      isExtensionsLoading,
+      displayValue: displayValue.trim().substring(0, 20),
+      hasContent: !!displayValue.trim(),
+      isSubmitButtonDisabled,
+    });
+    
     if (canSubmit) {
+      console.log('✅ Calling performSubmit');
       performSubmit();
+    } else {
+      console.log('❌ Cannot submit - blocked by:', {
+        isLoading,
+        isCompacting,
+        agentIsReady: !agentIsReady ? 'BLOCKED' : 'OK',
+        hasContent: !displayValue.trim() ? 'BLOCKED' : 'OK',
+      });
     }
   };
 
@@ -2438,21 +2467,21 @@ export default function ChatInput({
                       className="w-80 rounded-3xl border border-white/60 dark:border-zinc-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl p-2 shadow-xl"
                     >
                       <div className="px-3 py-2 space-y-2">
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-1 items-start">
                           <span className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-medium">Workspace</span>
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex flex-col gap-0.5 items-start w-full">
                             <div 
-                              className="text-sm text-zinc-900 dark:text-zinc-100 truncate font-medium" 
+                              className="text-sm text-zinc-900 dark:text-zinc-100 truncate font-medium text-left" 
                               title={workingDirectory}
                             >
                               {workingDirectory ? workingDirectory.split('/').pop() : 'Not set'}
                             </div>
-                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate font-mono opacity-80">
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate font-mono opacity-80 text-left">
                               {workingDirectory || ''}
                             </p>
                           </div>
                         </div>
-                        <DirSwitcher className="w-full justify-between text-sm text-zinc-900 dark:text-zinc-100" />
+                        <DirSwitcher className="w-full justify-start text-sm text-zinc-900 dark:text-zinc-100" />
                       </div>
 
                       <DropdownMenuSeparator className="bg-zinc-200 dark:bg-zinc-800 my-1" />
@@ -2463,10 +2492,32 @@ export default function ChatInput({
                             event.preventDefault();
                             setIsGoosehintsModalOpen?.(true);
                           }}
-                          className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/50 outline-none transition-colors"
+                          className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/50 outline-none transition-colors justify-start"
                         >
                           <FolderKey className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
                           <span className="font-medium text-zinc-900 dark:text-zinc-100">Goose hints</span>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            setView('recipes');
+                          }}
+                          className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/50 outline-none transition-colors justify-start"
+                        >
+                          <ScrollText className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                          <span className="font-medium text-zinc-900 dark:text-zinc-100">Recipes</span>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            setView('extensions');
+                          }}
+                          className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/50 outline-none transition-colors justify-start"
+                        >
+                          <Zap className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                          <span className="font-medium text-zinc-900 dark:text-zinc-100">Extensions</span>
                         </DropdownMenuItem>
 
                         {COST_TRACKING_ENABLED && (

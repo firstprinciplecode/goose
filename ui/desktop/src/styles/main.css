@@ -19,20 +19,22 @@
   --color-block-teal: #13bbaf;
   --color-block-orange: #ff4f00;
 
-  --color-neutral-50: #f4f6f7;
-  --color-neutral-100: #e3e6ea;
-  --color-neutral-200: #cbd1d6;
-  --color-neutral-300: #a7b0b9;
-  --color-neutral-400: #878787;
-  --color-neutral-500: #606c7a;
-  --color-neutral-600: #525b68;
-  --color-neutral-700: #474e57;
-  --color-neutral-800: #3f434b;
-  --color-neutral-900: #32353b;
-  --color-neutral-950: #1a1b1e;
+  /* Tailwind "zinc" palette (shadcn base) */
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f4f4f5;
+  --color-neutral-200: #e4e4e7;
+  --color-neutral-300: #d4d4d8;
+  --color-neutral-400: #a1a1aa;
+  --color-neutral-500: #71717a;
+  --color-neutral-600: #52525b;
+  --color-neutral-700: #3f3f46;
+  --color-neutral-800: #27272a;
+  --color-neutral-900: #18181b;
+  --color-neutral-950: #09090b;
 
-  --color-red-100: #ff6b6b;
-  --color-red-200: #f94b4b;
+  /* Tailwind red (crisper/clearer) */
+  --color-red-100: #ef4444; /* red-500 */
+  --color-red-200: #dc2626; /* red-600 */
 
   --color-blue-100: #7cacff;
   --color-blue-200: #5c98f9;
@@ -889,10 +891,12 @@ p > code.bg-inline-code {
   isolation: isolate !important;
   position: relative !important;
   z-index: 50 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
 }
 
 .dark .chat-composer-container {
   background-color: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
 /* ParticipantsBar with same styling as chat composer */

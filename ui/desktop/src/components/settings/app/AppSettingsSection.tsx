@@ -440,25 +440,17 @@ export default function AppSettingsSection({ scrollToSection }: AppSettingsSecti
           <CardTitle className="mb-1">Navigation Mode</CardTitle>
           <CardDescription>Choose between push menu or overlay launcher</CardDescription>
         </CardHeader>
-        <CardContent className="pt-4 px-4">
+        <CardContent className="pt-4 px-4 space-y-6">
           <NavigationModeSelector />
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-lg">
-        <CardHeader className="pb-0">
-          <CardTitle className="mb-1">Navigation Position</CardTitle>
-          <CardDescription className={navigationMode === 'overlay' ? 'text-text-muted' : ''}>
-            {navigationMode === 'overlay' 
-              ? 'Position is disabled when overlay mode is active'
-              : 'Choose where the navigation bar appears'
-            }
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-4 px-4">
-          <div className={navigationMode === 'overlay' ? 'opacity-50 pointer-events-none' : ''}>
-            <NavigationPositionSelector />
-          </div>
+          
+          {/* Position selector - only shown for push mode */}
+          {navigationMode === 'push' && (
+            <div className="pt-4 border-t border-border-default">
+              <h4 className="text-sm font-medium text-text-default mb-1">Position</h4>
+              <p className="text-xs text-text-muted mb-3">Choose where the navigation bar appears</p>
+              <NavigationPositionSelector />
+            </div>
+          )}
         </CardContent>
       </Card>
 
