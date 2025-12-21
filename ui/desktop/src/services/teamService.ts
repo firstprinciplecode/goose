@@ -73,13 +73,52 @@ export const createChannel = async (
   return data;
 };
 
-export const createDmChannel = async (
+export const findOrCreateDmChannel = async (
   client: SupabaseClient,
   targetUserId: string,
-  currentUserId?: string
+  currentUserId: string,
+  targetDisplayName?: string
 ): Promise<TeamChannel> => {
-  const name = `DM: ${[currentUserId, targetUserId].filter(Boolean).join(' & ')}` || 'Direct Message';
-  return createChannel(client, name, true, currentUserId, 'dm');
+  // First, check if a DM channel already exists between these two users
+  // A DM channel has both users as members and channel_type = 'dm'
+  const { data: existingChannels, error: searchError } = await client
+    .from('channels')
+    .select(`
+      *,
+      channel_members!inner (member_id)
+    `)
+    .eq('channel_type', 'dm')
+    .eq('channel_members.member_id', currentUserId);
+
+  if (searchError) throw searchError;
+
+  // Check if any of these DM channels also have the target user
+  if (existingChannels) {
+    for (const channel of existingChannels) {
+      const { data: members } = await client
+        .from('channel_members')
+        .select('member_id')
+        .eq('channel_id', channel.id);
+      
+      if (members && members.some(m => m.member_id === targetUserId)) {
+        // Found existing DM channel
+        return channel;
+      }
+    }
+  }
+
+  // No existing DM found, create a new one
+  // Use the target's display name for a friendly channel name
+  const name = targetDisplayName || targetUserId.slice(0, 8);
+  const newChannel = await createChannel(client, name, true, currentUserId, 'dm');
+  
+  // Add both users as members
+  await client.from('channel_members').insert([
+    { channel_id: newChannel.id, member_id: currentUserId, role: 'owner' },
+    { channel_id: newChannel.id, member_id: targetUserId, role: 'member' },
+  ]);
+  
+  return newChannel;
 };
 
 export const sendMessage = async (

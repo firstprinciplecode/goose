@@ -5,7 +5,7 @@ import {
   listChannels,
   listMessages,
   createChannel,
-  createDmChannel,
+  findOrCreateDmChannel,
   sendMessage,
   subscribeToMessages,
   ensureProfile,
@@ -150,19 +150,25 @@ export const useTeamData = (identity: TeamUserIdentity | null) => {
   );
 
   const handleCreateDm = useCallback(
-    async (targetUserId: string) => {
+    async (targetUserId: string, targetDisplayName?: string) => {
       if (!client || !session?.user?.id) return;
       if (!targetUserId.trim()) return;
       try {
-        const created = await createDmChannel(client, targetUserId.trim(), session.user.id);
-        // Add both users to DM channel
-        await addChannelMember(client, created.id, session.user.id, 'owner');
-        await addChannelMember(client, created.id, targetUserId.trim(), 'member');
-        setChannels((prev) => [...prev, created]);
-        setSelectedChannelId(created.id);
+        const dmChannel = await findOrCreateDmChannel(
+          client,
+          targetUserId.trim(),
+          session.user.id,
+          targetDisplayName
+        );
+        // Update channels list (only add if not already present)
+        setChannels((prev) => {
+          if (prev.some((c) => c.id === dmChannel.id)) return prev;
+          return [...prev, dmChannel];
+        });
+        setSelectedChannelId(dmChannel.id);
         setSelectedChannelType('dm');
         setMessagesCursor(null);
-        await loadMessages(created.id);
+        await loadMessages(dmChannel.id);
       } catch (e) {
         setError(getErrorMessage(e));
       }

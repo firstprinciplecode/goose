@@ -502,64 +502,52 @@ export default function TeamView() {
             </div>
           </div>
 
-          {/* Direct Messages Section */}
+          {/* Direct Messages / People Section */}
           <div>
             <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-text-muted uppercase tracking-wide">
               <MessageCircleIcon size={12} />
               <span>Direct Messages</span>
             </div>
             <div className="space-y-0.5">
-              {dmChannels.length === 0 ? (
+              {connectedUsers.length === 0 ? (
                 <div className="px-3 py-4 text-center">
                   <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-background-muted flex items-center justify-center">
-                    <MessageCircleIcon size={18} />
+                    <UsersIcon size={18} />
                   </div>
-                  <p className="text-xs text-text-muted">No conversations</p>
+                  <p className="text-xs text-text-muted">No conversations yet</p>
+                  <p className="text-[10px] text-text-muted mt-1">People you chat with will appear here</p>
                 </div>
               ) : (
-                dmChannels.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => void selectChannel(c.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2.5 transition-colors ${
-                      selectedChannelId === c.id
-                        ? 'bg-primary/15 text-primary font-medium'
-                        : 'hover:bg-background-muted text-text-default'
-                    }`}
-                  >
-                    <div className="w-5 h-5 rounded-full bg-background-muted flex items-center justify-center text-[10px] font-medium">
-                      {c.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <span className="truncate">{c.name}</span>
-                  </button>
-                ))
+                connectedUsers.map((u) => {
+                  // Find if there's an existing DM channel with this user
+                  const existingDm = dmChannels.find(c => 
+                    c.name === u.displayName || c.name.includes(u.userId)
+                  );
+                  const isSelected = existingDm && selectedChannelId === existingDm.id;
+                  
+                  return (
+                    <button
+                      key={u.userId}
+                      onClick={() => void createDm(u.userId, u.displayName)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2.5 transition-colors ${
+                        isSelected
+                          ? 'bg-primary/15 text-primary font-medium'
+                          : 'hover:bg-background-muted text-text-default'
+                      }`}
+                    >
+                      <div className="relative">
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center text-[10px] font-medium">
+                          {u.displayName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-background-default" />
+                      </div>
+                      <span className="truncate">{u.displayName}</span>
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
-
-          {/* People Section */}
-          {connectedUsers.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-text-muted uppercase tracking-wide">
-                <UsersIcon size={12} />
-                <span>People</span>
-              </div>
-              <div className="space-y-0.5">
-                {connectedUsers.map((u) => (
-                  <button
-                    key={u.userId}
-                    onClick={() => void createDm(u.userId)}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2.5 hover:bg-background-muted transition-colors"
-                  >
-                    <div className="w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center">
-                      <div className="w-2 h-2 rounded-full bg-green-500" />
-                    </div>
-                    <span className="truncate">{u.displayName}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* User Profile Footer */}
