@@ -13,6 +13,25 @@ import {
 import BellIcon from '../assets/bell.svg';
 import { redeemInvite, createChannelInvite } from '../services/teamService';
 
+// Helper to extract error message from Supabase errors or other objects
+const getErrorMessage = (e: unknown): string => {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'object' && e !== null) {
+    const obj = e as Record<string, unknown>;
+    if (typeof obj.message === 'string') return obj.message;
+    if (typeof obj.error === 'string') return obj.error;
+    if (typeof obj.error_description === 'string') return obj.error_description;
+    if (typeof obj.details === 'string') return obj.details;
+    if (typeof obj.hint === 'string') return obj.hint;
+    try {
+      return JSON.stringify(e);
+    } catch {
+      return String(e);
+    }
+  }
+  return String(e);
+};
+
 export default function TeamView() {
   const location = useLocation();
   const {
@@ -108,7 +127,7 @@ export default function TeamView() {
       await refreshChannels();
       setInviteStatus('Invite accepted.');
     } catch (e) {
-      setInviteError(e instanceof Error ? e.message : String(e));
+      setInviteError(getErrorMessage(e));
     }
   }, [inviteToken, supabaseEnabled, session, refreshChannels, client]);
 
@@ -135,7 +154,7 @@ export default function TeamView() {
       const link = `${baseUrl}#/team?invite=${invite.invite_token}`;
       setGeneratedInviteLink(link);
     } catch (e) {
-      setInviteError(e instanceof Error ? e.message : String(e));
+      setInviteError(getErrorMessage(e));
     } finally {
       setInviteLoading(false);
     }
@@ -161,7 +180,7 @@ export default function TeamView() {
       // Clear success message after 3 seconds
       setTimeout(() => setJoinCodeSuccess(false), 3000);
     } catch (e) {
-      setJoinCodeError(e instanceof Error ? e.message : String(e));
+      setJoinCodeError(getErrorMessage(e));
     } finally {
       setJoinCodeLoading(false);
     }

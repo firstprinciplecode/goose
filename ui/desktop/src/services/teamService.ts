@@ -150,11 +150,10 @@ export const createChannelInvite = async (
     .insert({
       channel_id: channelId,
       invite_token: token,
-      target_email: options?.targetEmail,
+      target_email: options?.targetEmail || null,
       expires_at: expiresAt,
       created_by: createdBy,
       invited_by: createdBy, // Required NOT NULL field in existing schema
-      status: 'pending',
     })
     .select()
     .single();
