@@ -177,16 +177,51 @@ export default function TeamView() {
     [channels, selectedChannelId]
   );
 
-  // Get unique users from profiles for the People section
-  const connectedUsers = useMemo(() => {
-    return Object.entries(profiles)
-      .filter(([userId]) => userId !== session?.user?.id)
-      .map(([userId, p]) => ({
-        userId,
-        displayName: p.display_name || p.email || userId.slice(0, 8),
-        email: p.email,
-      }));
-  }, [profiles, session?.user?.id]);
+  // Get all people for DMs: combine existing DM channels + profiles from messages
+  const dmContacts = useMemo(() => {
+    const contactMap = new Map<string, { 
+      displayName: string; 
+      email?: string; 
+      channelId?: string;
+      channelName?: string;
+    }>();
+    
+    // First, add people from existing DM channels
+    dmChannels.forEach((dm) => {
+      // Use the channel name as display name (since we now store proper names)
+      // The channel id can help us select the right DM
+      contactMap.set(dm.id, {
+        displayName: dm.name,
+        channelId: dm.id,
+        channelName: dm.name,
+      });
+    });
+    
+    // Also add people from profiles (people we've messaged with)
+    Object.entries(profiles).forEach(([userId, p]) => {
+      if (userId === session?.user?.id) return;
+      
+      // Check if this person already has a DM channel
+      const existingDm = dmChannels.find(c => 
+        c.name === p.display_name || 
+        c.name === p.email || 
+        c.name.includes(userId.slice(0, 8))
+      );
+      
+      if (!existingDm) {
+        // Add them as a potential new DM contact
+        contactMap.set(userId, {
+          displayName: p.display_name || p.email || userId.slice(0, 8),
+          email: p.email,
+        });
+      }
+    });
+    
+    return Array.from(contactMap.entries()).map(([id, data]) => ({
+      id, // Either channelId for existing DMs or userId for new contacts
+      ...data,
+    }));
+  }, [dmChannels, profiles, session?.user?.id]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -509,7 +544,7 @@ export default function TeamView() {
               <span>Direct Messages</span>
             </div>
             <div className="space-y-0.5">
-              {connectedUsers.length === 0 ? (
+              {dmContacts.length === 0 ? (
                 <div className="px-3 py-4 text-center">
                   <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-background-muted flex items-center justify-center">
                     <UsersIcon size={18} />
@@ -518,17 +553,23 @@ export default function TeamView() {
                   <p className="text-[10px] text-text-muted mt-1">People you chat with will appear here</p>
                 </div>
               ) : (
-                connectedUsers.map((u) => {
-                  // Find if there's an existing DM channel with this user
-                  const existingDm = dmChannels.find(c => 
-                    c.name === u.displayName || c.name.includes(u.userId)
-                  );
-                  const isSelected = existingDm && selectedChannelId === existingDm.id;
+                dmContacts.map((contact) => {
+                  // If it has channelId, it's an existing DM - just select it
+                  // Otherwise, it's a user from profiles - create/find DM
+                  const isExistingDm = !!contact.channelId;
+                  const isSelected = isExistingDm && selectedChannelId === contact.channelId;
+                  const displayName = contact.channelName || contact.displayName;
                   
                   return (
                     <button
-                      key={u.userId}
-                      onClick={() => void createDm(u.userId, u.displayName)}
+                      key={contact.id}
+                      onClick={() => {
+                        if (isExistingDm && contact.channelId) {
+                          void selectChannel(contact.channelId);
+                        } else {
+                          void createDm(contact.id, contact.displayName);
+                        }
+                      }}
                       className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2.5 transition-colors ${
                         isSelected
                           ? 'bg-primary/15 text-primary font-medium'
@@ -537,11 +578,11 @@ export default function TeamView() {
                     >
                       <div className="relative">
                         <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center text-[10px] font-medium">
-                          {u.displayName.slice(0, 2).toUpperCase()}
+                          {displayName.slice(0, 2).toUpperCase()}
                         </div>
                         <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-background-default" />
                       </div>
-                      <span className="truncate">{u.displayName}</span>
+                      <span className="truncate">{displayName}</span>
                     </button>
                   );
                 })
