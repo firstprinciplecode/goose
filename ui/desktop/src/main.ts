@@ -3078,10 +3078,10 @@ async function appMain() {
           "base-uri 'self';" +
           // Manifest files
           "manifest-src 'self';" +
-          // Worker sources
-          "worker-src 'self';" +
+          // Worker sources (blob: needed for Supabase Realtime)
+          "worker-src 'self' blob:;" +
           // Child sources for web workers and frames
-          "child-src 'self' http://localhost:*;" +
+          "child-src 'self' blob: http://localhost:*;" +
           // Upgrade insecure requests (but allow localhost HTTP)
           '',
       },
