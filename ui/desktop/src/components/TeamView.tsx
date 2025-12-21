@@ -136,6 +136,10 @@ export default function TeamView() {
     supabaseEnabled,
   } = useTeamData(identity);
 
+  // Filter channels into public and DM early so they can be used in memos
+  const publicChannels = useMemo(() => channels.filter((c) => c.channel_type !== 'dm'), [channels]);
+  const dmChannels = useMemo(() => channels.filter((c) => c.channel_type === 'dm'), [channels]);
+
   const [composerText, setComposerText] = useState('');
   const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [modalChannelName, setModalChannelName] = useState('');
@@ -445,9 +449,6 @@ export default function TeamView() {
       </div>
     );
   }
-
-  const publicChannels = channels.filter((c) => c.channel_type !== 'dm');
-  const dmChannels = channels.filter((c) => c.channel_type === 'dm');
 
   return (
     <div className="relative w-full h-full flex flex-col lg:flex-row overflow-hidden pt-8">
