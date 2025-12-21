@@ -4,14 +4,70 @@ import { useSupabase } from '../contexts/SupabaseContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useTeamData } from '../hooks/useTeamData';
-import {
-  AttachmentIcon,
-  UserIcon,
-  BotIcon,
-  MasonryIcon,
-} from './ui/icons';
+import { AttachmentIcon, UserIcon, MasonryIcon } from './ui/icons';
 import BellIcon from '../assets/bell.svg';
 import { redeemInvite, createChannelInvite } from '../services/teamService';
+
+// Icons
+const PlusIcon = ({ size = 20 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+const HashIcon = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="4" y1="9" x2="20" y2="9" />
+    <line x1="4" y1="15" x2="20" y2="15" />
+    <line x1="10" y1="3" x2="8" y2="21" />
+    <line x1="16" y1="3" x2="14" y2="21" />
+  </svg>
+);
+
+const LogOutIcon = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
+const LinkIcon = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+  </svg>
+);
+
+const SendIcon = ({ size = 18 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="22" y1="2" x2="11" y2="13" />
+    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+  </svg>
+);
+
+const UsersIcon = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
+const MessageCircleIcon = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+  </svg>
+);
+
+const XIcon = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
 
 // Helper to extract error message from Supabase errors or other objects
 const getErrorMessage = (e: unknown): string => {
@@ -81,7 +137,6 @@ export default function TeamView() {
   } = useTeamData(identity);
 
   const [composerText, setComposerText] = useState('');
-  const [dmTarget, setDmTarget] = useState('');
   const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [modalChannelName, setModalChannelName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
@@ -100,7 +155,8 @@ export default function TeamView() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
   
-  // Join with invite code state
+  // Join modal state
+  const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [joinCodeLoading, setJoinCodeLoading] = useState(false);
   const [joinCodeError, setJoinCodeError] = useState<string | null>(null);
@@ -112,7 +168,6 @@ export default function TeamView() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
@@ -121,6 +176,17 @@ export default function TeamView() {
     () => channels.find((c) => c.id === selectedChannelId),
     [channels, selectedChannelId]
   );
+
+  // Get unique users from profiles for the People section
+  const connectedUsers = useMemo(() => {
+    return Object.entries(profiles)
+      .filter(([userId]) => userId !== session?.user?.id)
+      .map(([userId, p]) => ({
+        userId,
+        displayName: p.display_name || p.email || userId.slice(0, 8),
+        email: p.email,
+      }));
+  }, [profiles, session?.user?.id]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -134,9 +200,9 @@ export default function TeamView() {
       setInviteStatus('Redeeming invite...');
       setInviteError(null);
       await redeemInvite(client, inviteToken);
-      setInviteStatus('Invite accepted. Loading channels...');
+      setInviteStatus('Invite accepted!');
       await refreshChannels();
-      setInviteStatus('Invite accepted.');
+      setTimeout(() => setInviteStatus(null), 3000);
     } catch (e) {
       setInviteError(getErrorMessage(e));
     }
@@ -160,7 +226,6 @@ export default function TeamView() {
         session.user.id,
         { targetEmail: inviteTargetEmail || undefined, expiresInDays: 7 }
       );
-      // Build invite link - use the app's deep link format
       const baseUrl = window.location.origin + window.location.pathname;
       const link = `${baseUrl}#/team?invite=${invite.invite_token}`;
       setGeneratedInviteLink(link);
@@ -170,13 +235,6 @@ export default function TeamView() {
       setInviteLoading(false);
     }
   }, [client, selectedChannelId, session, inviteTargetEmail]);
-
-  const handleCopyInvite = useCallback(() => {
-    if (!generatedInviteLink) return;
-    void navigator.clipboard.writeText(generatedInviteLink);
-    setInviteCopied(true);
-    setTimeout(() => setInviteCopied(false), 2000);
-  }, [generatedInviteLink]);
 
   const handleJoinWithCode = useCallback(async () => {
     if (!client || !session || !joinCodeInput.trim()) return;
@@ -188,8 +246,10 @@ export default function TeamView() {
       setJoinCodeSuccess(true);
       setJoinCodeInput('');
       await refreshChannels();
-      // Clear success message after 3 seconds
-      setTimeout(() => setJoinCodeSuccess(false), 3000);
+      setTimeout(() => {
+        setJoinCodeSuccess(false);
+        setJoinModalOpen(false);
+      }, 1500);
     } catch (e) {
       setJoinCodeError(getErrorMessage(e));
     } finally {
@@ -197,59 +257,76 @@ export default function TeamView() {
     }
   }, [client, session, joinCodeInput, refreshChannels]);
 
+  // Not configured state
   if (!isEnabled) {
     return (
       <div className="w-full h-full flex items-center justify-center p-8">
-        <div className="max-w-xl w-full text-center space-y-4">
-          <h1 className="text-2xl font-semibold">Team</h1>
-          <p className="text-text-muted">
-            Team spaces are not configured yet. Add Supabase settings to enable channels and DMs.
-          </p>
-          <div className="text-sm text-text-muted">
-            Missing: {missingKeys.length ? missingKeys.join(', ') : 'Unknown'} {reason ? `(${reason})` : ''}
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center">
+            <UsersIcon size={32} />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold">Team</h1>
+            <p className="text-text-muted">
+              Connect with your team through channels and direct messages.
+            </p>
+          </div>
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-600 dark:text-amber-400">
+            <p className="font-medium mb-1">Configuration Required</p>
+            <p className="text-xs opacity-80">
+              Missing: {missingKeys.length ? missingKeys.join(', ') : 'Unknown'}
+              {reason ? ` (${reason})` : ''}
+            </p>
           </div>
         </div>
       </div>
     );
   }
 
+  // Auth gate
   if (authReady && !session) {
-    // Inline auth gate to avoid re-mounting on state changes
     return (
       <div className="w-full h-full flex items-center justify-center p-8">
-        <div className="w-full max-w-md space-y-4 border border-border/60 rounded-xl p-6 bg-background-default/80">
-          <h2 className="text-xl font-semibold">Sign in to Team</h2>
+        <div className="w-full max-w-sm space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white">
+              <UsersIcon size={28} />
+            </div>
+            <h2 className="text-xl font-semibold">Sign in to Team</h2>
+            <p className="text-sm text-text-muted">
+              Join channels and chat with your team
+            </p>
+          </div>
           
-          {/* Toggle between OTP and Password auth */}
-          <div className="flex gap-2 text-sm">
+          <div className="flex rounded-lg bg-background-muted p-1">
             <button
-              className={`px-3 py-1 rounded ${!usePasswordAuth ? 'bg-primary text-white' : 'bg-background-muted text-text-muted'}`}
+              className={`flex-1 py-2 px-3 text-sm rounded-md transition-colors ${!usePasswordAuth ? 'bg-background-default shadow-sm font-medium' : 'text-text-muted hover:text-text-default'}`}
               onClick={() => setUsePasswordAuth(false)}
             >
-              Magic Code
+              Magic Link
             </button>
             <button
-              className={`px-3 py-1 rounded ${usePasswordAuth ? 'bg-primary text-white' : 'bg-background-muted text-text-muted'}`}
+              className={`flex-1 py-2 px-3 text-sm rounded-md transition-colors ${usePasswordAuth ? 'bg-background-default shadow-sm font-medium' : 'text-text-muted hover:text-text-default'}`}
               onClick={() => setUsePasswordAuth(true)}
             >
               Password
             </button>
           </div>
 
-          {!usePasswordAuth ? (
-            <>
-              <p className="text-sm text-text-muted">
-                Enter your email to receive a one-time code.
-              </p>
-              <div className="space-y-3">
-                <Input
-                  placeholder="you@example.com"
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                />
-                <div className="flex gap-2">
+          <div className="space-y-4">
+            <Input
+              placeholder="Email"
+              type="email"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+              className="h-11"
+            />
+            
+            {!usePasswordAuth ? (
+              <>
+                {!otpSent ? (
                   <Button
+                    className="w-full h-11"
                     onClick={async () => {
                       if (!authEmail) return;
                       try {
@@ -260,446 +337,444 @@ export default function TeamView() {
                       }
                     }}
                   >
-                    Send code
+                    Send Magic Code
                   </Button>
-                  <Input
-                    placeholder="One-time code"
-                    value={authCode}
-                    onChange={(e) => setAuthCode(e.target.value)}
-                    disabled={!otpSent}
-                  />
-                  <Button
-                    variant="outline"
-                    disabled={!otpSent || !authCode}
-                    onClick={async () => {
-                      if (!authEmail || !authCode) return;
-                      try {
-                        await verifyEmailOtp(authEmail, authCode);
-                      } catch (e) {
-                        console.error('Verify error:', e);
-                      }
-                    }}
-                  >
-                    Verify
-                  </Button>
-                </div>
-              </div>
-              {otpSent && !authError && (
-                <div className="text-xs text-green-600 dark:text-green-400">
-                  ✓ Code sent to {authEmail}. Check your inbox (and spam folder) for a 6-digit code.
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-text-muted">
-                Sign in or create an account with email and password.
-              </p>
-              <div className="space-y-3">
-                <Input
-                  placeholder="you@example.com"
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                />
+                ) : (
+                  <div className="space-y-3">
+                    <div className="text-xs text-green-600 dark:text-green-400 text-center">
+                      ✓ Code sent to {authEmail}
+                    </div>
+                    <Input
+                      placeholder="Enter 6-digit code"
+                      value={authCode}
+                      onChange={(e) => setAuthCode(e.target.value)}
+                      className="h-11 text-center tracking-widest"
+                    />
+                    <Button
+                      className="w-full h-11"
+                      disabled={!authCode}
+                      onClick={async () => {
+                        if (!authEmail || !authCode) return;
+                        try {
+                          await verifyEmailOtp(authEmail, authCode);
+                        } catch (e) {
+                          console.error('Verify error:', e);
+                        }
+                      }}
+                    >
+                      Verify Code
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
                 <Input
                   placeholder="Password"
                   type="password"
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
+                  className="h-11"
                 />
                 <div className="flex gap-2">
                   <Button
+                    className="flex-1 h-11"
                     onClick={async () => {
                       if (!authEmail || !authPassword) return;
                       await signInWithPassword(authEmail, authPassword);
                     }}
                   >
-                    Sign in
+                    Sign In
                   </Button>
                   <Button
                     variant="outline"
+                    className="flex-1 h-11"
                     onClick={async () => {
                       if (!authEmail || !authPassword) return;
                       await signUpWithPassword(authEmail, authPassword);
                     }}
                   >
-                    Sign up
+                    Sign Up
                   </Button>
                 </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
+          </div>
 
           {authError && (
-            <div className="text-xs text-destructive p-2 border border-destructive/30 rounded bg-destructive/10">
-              <strong>Error:</strong> {authError}
+            <div className="text-xs text-destructive p-3 rounded-lg border border-destructive/30 bg-destructive/10">
+              {authError}
             </div>
           )}
-          <div className="text-[10px] text-text-muted/60 pt-2 border-t border-border/30">
-            Tip: If emails aren't arriving, use password auth or check Supabase dashboard → Authentication settings.
-          </div>
         </div>
       </div>
     );
   }
 
+  const publicChannels = channels.filter((c) => c.channel_type !== 'dm');
+  const dmChannels = channels.filter((c) => c.channel_type === 'dm');
+
   return (
-    <div className="relative w-full h-full flex flex-col lg:flex-row border-border/50 overflow-hidden pt-8">
-      {/* Notification icon to match chat layout */}
+    <div className="relative w-full h-full flex flex-col lg:flex-row overflow-hidden pt-8">
+      {/* Bell icon */}
       <button
         className="absolute right-2 top-[6px] z-[101] w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors no-drag"
         title="Notifications"
       >
-        <img
-          src={BellIcon}
-          alt="Notifications"
-          className="w-6 h-6 opacity-60 hover:opacity-100 transition-opacity"
-        />
+        <img src={BellIcon} alt="Notifications" className="w-6 h-6 opacity-60 hover:opacity-100 transition-opacity" />
       </button>
 
-      <aside className="w-full lg:w-80 border-b lg:border-b-0 lg:border-r border-border/60 bg-background-default/80 backdrop-blur flex-shrink-0 h-full overflow-y-auto">
-        <div className="p-4 pt-5 border-b border-border/60 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <BotIcon /> Team
-            </h2>
-            <p className="text-xs text-text-muted">Channels and DMs</p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 rounded-full"
-            disabled={!supabaseEnabled || isLoadingChannels || !session}
-            onClick={() => {
-              setModalChannelName('');
-              setChannelModalOpen(true);
-            }}
-            title="New channel"
-          >
-            +
-          </Button>
-        </div>
-        <div className="p-3">
-          <div className="relative mb-3">
-            <Input
-              placeholder="Find or start a DM"
-              className="pl-9 pr-3 text-sm"
-              value={dmTarget}
-              onChange={(e) => setDmTarget(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && dmTarget.trim()) {
-                  void createDm(dmTarget.trim());
-                  setDmTarget('');
-                }
+      {/* Sidebar */}
+      <aside className="w-full lg:w-72 border-b lg:border-b-0 lg:border-r border-border/40 bg-background-default/60 backdrop-blur flex flex-col h-full">
+        {/* Sidebar Header */}
+        <div className="p-4 pt-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Team</h2>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => setJoinModalOpen(true)}
+              title="Join channel"
+              disabled={!session}
+            >
+              <LinkIcon size={16} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => {
+                setModalChannelName('');
+                setChannelModalOpen(true);
               }}
+              title="Create channel"
               disabled={!supabaseEnabled || isLoadingChannels || !session}
-            />
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted text-xs">🔍</span>
+            >
+              <PlusIcon size={18} />
+            </Button>
           </div>
-          <div className="space-y-4 text-sm text-text-muted">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between font-semibold text-text-standard text-xs uppercase tracking-wide">
-                <span>Channels</span>
-                {isLoadingChannels && <span className="text-[10px] text-text-muted">Loading…</span>}
-              </div>
-              <div className="space-y-1">
-                {channels.length === 0 && (
-                  <div className="rounded-lg border border-dashed border-border/60 p-3 text-xs text-text-muted">
-                    No channels yet. Create one to get started.
-                  </div>
-                )}
-                {channels
-                  .filter((c) => c.channel_type !== 'dm')
-                  .map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => void selectChannel(c.id)}
-                      className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
-                        selectedChannelId === c.id
-                          ? 'bg-background-accent text-text-on-accent'
-                          : 'hover:bg-background-medium text-text-default'
-                      }`}
-                    >
-                      <span className="text-xs text-text-muted">#</span>
-                      <span className="truncate">{c.name}</span>
-                    </button>
-                  ))}
-              </div>
-            </div>
+        </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between font-semibold text-text-standard text-xs uppercase tracking-wide">
-                <span>Direct Messages</span>
-              </div>
-              <div className="space-y-1">
-                {channels
-                  .filter((c) => c.channel_type === 'dm')
-                  .map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => void selectChannel(c.id)}
-                      className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
-                        selectedChannelId === c.id
-                          ? 'bg-background-accent text-text-on-accent'
-                          : 'hover:bg-background-medium text-text-default'
-                      }`}
-                    >
-                      <UserIcon />
-                      <span className="truncate">{c.name}</span>
-                    </button>
-                  ))}
-                {channels.filter((c) => c.channel_type === 'dm').length === 0 && (
-                  <div className="rounded-lg border border-dashed border-border/60 p-3 text-xs text-text-muted">
-                    DMs will appear here once started.
-                  </div>
-                )}
-              </div>
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-5">
+          {/* Channels Section */}
+          <div>
+            <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-text-muted uppercase tracking-wide">
+              <HashIcon size={12} />
+              <span>Channels</span>
+              {isLoadingChannels && <span className="text-[10px] opacity-60">...</span>}
             </div>
-
-            {/* Join with invite code section */}
-            <div className="space-y-2 pt-4 border-t border-border/40">
-              <div className="font-semibold text-text-standard text-xs uppercase tracking-wide">
-                Join a Channel
-              </div>
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter invite code"
-                    className="text-xs h-8"
-                    value={joinCodeInput}
-                    onChange={(e) => {
-                      setJoinCodeInput(e.target.value);
-                      setJoinCodeError(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && joinCodeInput.trim()) {
-                        void handleJoinWithCode();
-                      }
-                    }}
-                    disabled={!session || joinCodeLoading}
-                  />
+            <div className="space-y-0.5">
+              {publicChannels.length === 0 ? (
+                <div className="px-3 py-4 text-center">
+                  <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-background-muted flex items-center justify-center">
+                    <HashIcon size={18} />
+                  </div>
+                  <p className="text-xs text-text-muted">No channels yet</p>
                   <Button
+                    variant="ghost"
                     size="sm"
-                    className="h-8 px-3 text-xs"
-                    onClick={handleJoinWithCode}
-                    disabled={!session || !joinCodeInput.trim() || joinCodeLoading}
+                    className="mt-2 text-xs h-7"
+                    onClick={() => setChannelModalOpen(true)}
+                    disabled={!session}
                   >
-                    {joinCodeLoading ? '...' : 'Join'}
+                    <PlusIcon size={14} />
+                    <span className="ml-1">Create one</span>
                   </Button>
                 </div>
-                {joinCodeSuccess && (
-                  <div className="text-xs text-green-600 dark:text-green-400">
-                    ✓ Successfully joined channel!
-                  </div>
-                )}
-                {joinCodeError && (
-                  <div className="text-xs text-destructive">
-                    {joinCodeError}
-                  </div>
-                )}
-                <p className="text-[10px] text-text-muted">
-                  Got an invite code? Paste it here to join.
-                </p>
-              </div>
+              ) : (
+                publicChannels.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => void selectChannel(c.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2.5 transition-colors ${
+                      selectedChannelId === c.id
+                        ? 'bg-primary/15 text-primary font-medium'
+                        : 'hover:bg-background-muted text-text-default'
+                    }`}
+                  >
+                    <HashIcon size={14} />
+                    <span className="truncate">{c.name}</span>
+                  </button>
+                ))
+              )}
             </div>
           </div>
+
+          {/* Direct Messages Section */}
+          <div>
+            <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-text-muted uppercase tracking-wide">
+              <MessageCircleIcon size={12} />
+              <span>Direct Messages</span>
+            </div>
+            <div className="space-y-0.5">
+              {dmChannels.length === 0 ? (
+                <div className="px-3 py-4 text-center">
+                  <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-background-muted flex items-center justify-center">
+                    <MessageCircleIcon size={18} />
+                  </div>
+                  <p className="text-xs text-text-muted">No conversations</p>
+                </div>
+              ) : (
+                dmChannels.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => void selectChannel(c.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2.5 transition-colors ${
+                      selectedChannelId === c.id
+                        ? 'bg-primary/15 text-primary font-medium'
+                        : 'hover:bg-background-muted text-text-default'
+                    }`}
+                  >
+                    <div className="w-5 h-5 rounded-full bg-background-muted flex items-center justify-center text-[10px] font-medium">
+                      {c.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className="truncate">{c.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* People Section */}
+          {connectedUsers.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-text-muted uppercase tracking-wide">
+                <UsersIcon size={12} />
+                <span>People</span>
+              </div>
+              <div className="space-y-0.5">
+                {connectedUsers.map((u) => (
+                  <button
+                    key={u.userId}
+                    onClick={() => void createDm(u.userId)}
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2.5 hover:bg-background-muted transition-colors"
+                  >
+                    <div className="w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center">
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                    </div>
+                    <span className="truncate">{u.displayName}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* User Profile Footer */}
+        {session && (
+          <div className="p-3 border-t border-border/40">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-medium">
+                {(session.user.email || 'U').slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">
+                  {profile?.display_name || session.user.email?.split('@')[0] || 'User'}
+                </div>
+                <div className="text-xs text-text-muted truncate">{session.user.email}</div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-text-muted hover:text-text-default"
+                onClick={() => void signOut()}
+                title="Sign out"
+              >
+                <LogOutIcon size={16} />
+              </Button>
+            </div>
+          </div>
+        )}
       </aside>
+
+      {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <div className="border-b border-border/60 px-4 pt-5 pb-4 flex items-center justify-between bg-background-default/70 backdrop-blur">
-          <div className="space-y-1">
-            <h3 className="text-base font-semibold flex items-center gap-2">
-              {selectedChannelType === 'dm' ? <UserIcon /> : <MasonryIcon />}
-              {selectedChannel
-                ? selectedChannel.channel_type === 'dm'
-                  ? selectedChannel.name
-                  : `# ${selectedChannel.name}`
-                : 'Select a channel or DM'}
-            </h3>
-            <p className="text-xs text-text-muted">
-              {error ? 'An error occurred. See details below.' : 'Real-time messages backed by Supabase.'}
-            </p>
-            {error && (
-              <div className="mt-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive max-w-md">
-                {error}
+        {/* Channel Header */}
+        <div className="border-b border-border/40 px-4 py-3 flex items-center justify-between bg-background-default/60 backdrop-blur shrink-0">
+          <div className="flex items-center gap-3">
+            {selectedChannelType === 'dm' ? (
+              <div className="w-8 h-8 rounded-full bg-background-muted flex items-center justify-center">
+                <UserIcon />
+              </div>
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-background-muted flex items-center justify-center">
+                <HashIcon size={16} />
               </div>
             )}
+            <div>
+              <h3 className="font-semibold">
+                {selectedChannel?.name || 'Select a channel'}
+              </h3>
+              {error && (
+                <p className="text-xs text-destructive">{error}</p>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {selectedChannel && selectedChannel.channel_type !== 'dm' && (
+          {selectedChannel && selectedChannel.channel_type !== 'dm' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => {
+                setInviteTargetEmail('');
+                setGeneratedInviteLink(null);
+                setInviteError(null);
+                setInviteModalOpen(true);
+              }}
+            >
+              <PlusIcon size={14} />
+              <span>Invite</span>
+            </Button>
+          )}
+        </div>
+
+        {/* Messages Area */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+          {messagesCursor && !isLoadingMessages && (
+            <div className="flex justify-center">
+              <Button variant="ghost" size="sm" onClick={() => void loadOlder()} className="text-xs">
+                Load older messages
+              </Button>
+            </div>
+          )}
+          
+          {isLoadingMessages && (
+            <div className="flex justify-center py-8">
+              <div className="text-sm text-text-muted">Loading...</div>
+            </div>
+          )}
+          
+          {!isLoadingMessages && messages.length === 0 && selectedChannel && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-background-muted flex items-center justify-center mb-4">
+                <MessageCircleIcon size={28} />
+              </div>
+              <h4 className="font-medium mb-1">No messages yet</h4>
+              <p className="text-sm text-text-muted">Be the first to say something!</p>
+            </div>
+          )}
+          
+          {!selectedChannel && !isLoadingMessages && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center mb-4">
+                <MasonryIcon />
+              </div>
+              <h4 className="font-medium mb-1">Welcome to Team</h4>
+              <p className="text-sm text-text-muted">Select a channel or start a conversation</p>
+            </div>
+          )}
+          
+          {messages.map((m, idx) => {
+            const prev = messages[idx - 1];
+            const isSameAuthor =
+              prev &&
+              prev.user_id === m.user_id &&
+              Math.abs(new Date(m.created_at).getTime() - new Date(prev.created_at).getTime()) < 5 * 60 * 1000;
+            const displayName =
+              profiles[m.user_id]?.display_name ||
+              profiles[m.user_id]?.email ||
+              m.user_email ||
+              m.user_id?.slice(0, 8);
+            return (
+              <div key={m.id} className="flex gap-3 px-2 py-1 rounded-lg hover:bg-background-muted/50 transition-colors">
+                {!isSameAuthor ? (
+                  <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center text-xs font-medium shrink-0">
+                    {(displayName || '??').slice(0, 2).toUpperCase()}
+                  </div>
+                ) : (
+                  <div className="w-9 shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  {!isSameAuthor && (
+                    <div className="flex items-baseline gap-2 mb-0.5">
+                      <span className="font-medium text-sm">{displayName}</span>
+                      <span className="text-xs text-text-muted">
+                        {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  )}
+                  <div className="text-sm whitespace-pre-wrap break-words">{m.content}</div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Composer */}
+        <div className="p-4 shrink-0">
+          <div className="border border-border/50 rounded-xl bg-background-default/80 p-2">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder={selectedChannel ? `Message ${selectedChannel.channel_type === 'dm' ? '' : '#'}${selectedChannel.name}` : 'Select a channel'}
+                value={composerText}
+                onChange={(e) => setComposerText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && composerText.trim()) {
+                    e.preventDefault();
+                    void sendMessage(composerText);
+                    setComposerText('');
+                  }
+                }}
+                disabled={!selectedChannelId || !session}
+                className="flex-1 border-0 bg-transparent focus-visible:ring-0 h-10"
+              />
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="h-7 px-3 text-xs"
+                className="h-9 w-9 p-0"
+                disabled={!selectedChannelId || !composerText.trim() || !session}
                 onClick={() => {
-                  setInviteTargetEmail('');
-                  setGeneratedInviteLink(null);
-                  setInviteError(null);
-                  setInviteModalOpen(true);
+                  if (composerText.trim()) {
+                    void sendMessage(composerText);
+                    setComposerText('');
+                  }
                 }}
               >
-                Invite
+                <SendIcon size={18} />
               </Button>
-            )}
-            {session && (
-              <div className="text-xs text-text-muted flex items-center gap-2">
-                {session.user.email}
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => void signOut()}>
-                  Sign out
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
-            {!isLoadingMessages && messagesCursor && (
-              <div className="flex justify-center">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    void loadOlder();
-                  }}
-                  disabled={!messagesCursor || isLoadingMessages}
-                >
-                  Load older
-                </Button>
-              </div>
-            )}
-            {isLoadingMessages && <div className="text-xs text-text-muted">Loading messages…</div>}
-            {!isLoadingMessages && messages.length === 0 && (
-              <div className="text-xs text-text-muted">No messages yet. Say hello!</div>
-            )}
-            {messages.map((m, idx) => {
-              const prev = messages[idx - 1];
-              const isSameAuthor =
-                prev &&
-                prev.user_id === m.user_id &&
-                Math.abs(new Date(m.created_at).getTime() - new Date(prev.created_at).getTime()) < 5 * 60 * 1000;
-              const displayName =
-                profiles[m.user_id]?.display_name ||
-                profiles[m.user_id]?.email ||
-                m.user_email ||
-                m.user_id;
-              return (
-                <div
-                  key={m.id}
-                  className="flex gap-3 px-2 py-1 rounded-md hover:bg-background-medium/30 transition-colors"
-                >
-                  {!isSameAuthor ? (
-                    <div className="h-9 w-9 rounded-full bg-background-muted flex items-center justify-center text-xs text-text-muted shrink-0">
-                      {(displayName || '').slice(0, 2).toUpperCase()}
-                    </div>
-                  ) : (
-                    <div className="h-9 w-9 shrink-0" />
-                  )}
-                  <div className="flex-1 space-y-1">
-                    {!isSameAuthor && (
-                      <div className="text-xs text-text-muted flex items-center gap-2">
-                        <span className="font-semibold text-text-default">{displayName}</span>
-                        <span>{new Date(m.created_at).toLocaleString()}</span>
-                      </div>
-                    )}
-                    <div className="text-sm text-text-default bg-background-muted rounded-md px-3 py-2 whitespace-pre-wrap">
-                      {m.content}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {/* Scroll anchor for auto-scroll to bottom */}
-            <div ref={messagesEndRef} />
-          </div>
-          <div className="border-t border-border/60 px-4 pb-6 pt-3 shrink-0 bg-background-default/70 backdrop-blur">
-            <div className="w-full border border-border/50 rounded-2xl bg-background-default/80 px-3 py-2 flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder={selectedChannelType === 'dm' ? 'Message @user' : 'Message #channel'}
-                  value={composerText}
-                  onChange={(e) => setComposerText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      if (composerText.trim()) {
-                        void sendMessage(composerText);
-                        setComposerText('');
-                      }
-                    }
-                  }}
-                disabled={!selectedChannelId || !supabaseEnabled || !session}
-                  className="flex-1 bg-transparent border-0 focus-visible:ring-0 focus-visible:outline-none h-10"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 w-9 p-0 text-text-muted"
-                  title="Send"
-                  onClick={() => {
-                    if (composerText.trim()) {
-                      void sendMessage(composerText);
-                      setComposerText('');
-                    }
-                  }}
-                disabled={!selectedChannelId || !composerText.trim() || !supabaseEnabled || !session}
-                >
-                  ➜
-                </Button>
-              </div>
-              <div className="flex items-center gap-1 text-text-muted">
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Add">
-                  +
-                </Button>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Formatting">
-                  Aa
-                </Button>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Emoji">
-                  😊
-                </Button>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Mention">
-                  @
-                </Button>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Attach file">
-                  <AttachmentIcon />
-                </Button>
-              </div>
+            </div>
+            <div className="flex items-center gap-1 mt-1 text-text-muted">
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Attach file">
+                <AttachmentIcon />
+              </Button>
             </div>
           </div>
         </div>
       </main>
 
+      {/* Create Channel Modal */}
       {channelModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-lg bg-background-default border border-border/60 shadow-lg p-6 space-y-4">
+          <div className="w-full max-w-sm rounded-xl bg-background-default border border-border/50 shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Create a channel</h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setChannelModalOpen(false)}
-              >
-                Close
+              <h3 className="text-lg font-semibold">Create Channel</h3>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setChannelModalOpen(false)}>
+                <XIcon size={16} />
               </Button>
             </div>
             <div className="space-y-2">
               <label className="text-sm text-text-muted">Channel name</label>
               <Input
                 autoFocus
-                placeholder="e.g. best-channel"
+                placeholder="general"
                 value={modalChannelName}
                 onChange={(e) => setModalChannelName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && modalChannelName.trim()) {
+                    void createChannel(modalChannelName.trim(), false);
+                    setModalChannelName('');
+                    setChannelModalOpen(false);
+                  }
+                }}
               />
             </div>
             <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setChannelModalOpen(false)}>Cancel</Button>
               <Button
-                variant="ghost"
-                onClick={() => setChannelModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                disabled={!modalChannelName.trim() || !supabaseEnabled || isLoadingChannels || !session}
+                disabled={!modalChannelName.trim() || !session}
                 onClick={() => {
                   if (!modalChannelName.trim()) return;
                   void createChannel(modalChannelName.trim(), false);
@@ -714,93 +789,106 @@ export default function TeamView() {
         </div>
       )}
 
+      {/* Join Channel Modal */}
+      {joinModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl bg-background-default border border-border/50 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Join Channel</h3>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setJoinModalOpen(false)}>
+                <XIcon size={16} />
+              </Button>
+            </div>
+            <p className="text-sm text-text-muted">
+              Enter an invite code to join a channel.
+            </p>
+            <Input
+              autoFocus
+              placeholder="Paste invite code"
+              value={joinCodeInput}
+              onChange={(e) => {
+                setJoinCodeInput(e.target.value);
+                setJoinCodeError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && joinCodeInput.trim()) {
+                  void handleJoinWithCode();
+                }
+              }}
+            />
+            {joinCodeSuccess && (
+              <div className="text-sm text-green-600 dark:text-green-400 text-center">✓ Joined successfully!</div>
+            )}
+            {joinCodeError && (
+              <div className="text-sm text-destructive">{joinCodeError}</div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setJoinModalOpen(false)}>Cancel</Button>
+              <Button
+                disabled={!joinCodeInput.trim() || joinCodeLoading}
+                onClick={handleJoinWithCode}
+              >
+                {joinCodeLoading ? 'Joining...' : 'Join'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invite Modal */}
       {inviteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-lg bg-background-default border border-border/60 shadow-lg p-6 space-y-4">
+          <div className="w-full max-w-sm rounded-xl bg-background-default border border-border/50 shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">
-                Invite to #{selectedChannel?.name || 'channel'}
-              </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setInviteModalOpen(false)}
-              >
-                Close
+              <h3 className="text-lg font-semibold">Invite to #{selectedChannel?.name}</h3>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setInviteModalOpen(false)}>
+                <XIcon size={16} />
               </Button>
             </div>
             
             {!generatedInviteLink ? (
               <>
                 <p className="text-sm text-text-muted">
-                  Create an invite link to share with others. They'll need to sign in to join.
+                  Create an invite link. It expires in 7 days.
                 </p>
                 <div className="space-y-2">
                   <label className="text-sm text-text-muted">Restrict to email (optional)</label>
                   <Input
-                    placeholder="user@example.com (leave blank for anyone)"
+                    placeholder="anyone@example.com"
                     type="email"
                     value={inviteTargetEmail}
                     onChange={(e) => setInviteTargetEmail(e.target.value)}
                   />
-                  <p className="text-xs text-text-muted">
-                    If set, only this email address can use the invite.
-                  </p>
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button variant="ghost" onClick={() => setInviteModalOpen(false)}>
-                    Cancel
-                  </Button>
+                  <Button variant="ghost" onClick={() => setInviteModalOpen(false)}>Cancel</Button>
                   <Button onClick={handleCreateInvite} disabled={inviteLoading}>
-                    {inviteLoading ? 'Creating...' : 'Create Invite Link'}
+                    {inviteLoading ? 'Creating...' : 'Create Invite'}
                   </Button>
                 </div>
               </>
             ) : (
               <>
-                <p className="text-sm text-text-muted">
-                  Share this invite code with the person you want to invite. It expires in 7 days.
-                </p>
-                <div className="space-y-3">
-                  {/* Invite Code - prominently displayed */}
-                  <div className="bg-background-muted rounded-lg p-4 text-center">
-                    <div className="text-xs text-text-muted mb-1">Invite Code</div>
-                    <div className="text-lg font-mono font-bold tracking-wider select-all">
-                      {generatedInviteLink?.split('invite=')[1] || ''}
-                    </div>
-                  </div>
-                  <div className="flex justify-center">
-                    <Button 
-                      onClick={() => {
-                        const code = generatedInviteLink?.split('invite=')[1] || '';
-                        void navigator.clipboard.writeText(code);
-                        setInviteCopied(true);
-                        setTimeout(() => setInviteCopied(false), 2000);
-                      }} 
-                      variant="outline" 
-                      className="w-full"
-                    >
-                      {inviteCopied ? '✓ Copied!' : 'Copy Invite Code'}
-                    </Button>
-                  </div>
-                  {inviteTargetEmail && (
-                    <p className="text-xs text-text-muted text-center">
-                      Restricted to: <span className="font-semibold">{inviteTargetEmail}</span>
-                    </p>
-                  )}
-                  <div className="text-xs text-text-muted bg-background-muted/50 rounded p-3 space-y-1">
-                    <div className="font-semibold">How to join:</div>
-                    <ol className="list-decimal list-inside space-y-1">
-                      <li>Open Goose app</li>
-                      <li>Go to Team</li>
-                      <li>Enter this code in "Join a Channel"</li>
-                    </ol>
+                <div className="bg-background-muted rounded-lg p-4 text-center">
+                  <div className="text-xs text-text-muted mb-1">Invite Code</div>
+                  <div className="text-lg font-mono font-bold tracking-wider select-all">
+                    {generatedInviteLink.split('invite=')[1] || ''}
                   </div>
                 </div>
+                <Button 
+                  className="w-full"
+                  variant={inviteCopied ? 'outline' : 'default'}
+                  onClick={() => {
+                    const code = generatedInviteLink.split('invite=')[1] || '';
+                    void navigator.clipboard.writeText(code);
+                    setInviteCopied(true);
+                    setTimeout(() => setInviteCopied(false), 2000);
+                  }}
+                >
+                  {inviteCopied ? '✓ Copied!' : 'Copy Code'}
+                </Button>
                 <div className="flex justify-end gap-2">
-                  <Button variant="ghost" onClick={() => setInviteModalOpen(false)}>
-                    Done
-                  </Button>
+                  <Button variant="ghost" onClick={() => setInviteModalOpen(false)}>Done</Button>
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -813,18 +901,17 @@ export default function TeamView() {
                 </div>
               </>
             )}
-
+            
             {inviteError && (
-              <div className="text-xs text-destructive p-2 border border-destructive/30 rounded bg-destructive/10">
-                <strong>Error:</strong> {inviteError}
-              </div>
+              <div className="text-sm text-destructive">{inviteError}</div>
             )}
           </div>
         </div>
       )}
 
+      {/* Toast for invite status */}
       {inviteStatus && (
-        <div className="fixed bottom-4 right-4 z-50 bg-background-default border border-border/60 rounded-lg shadow-lg px-4 py-3 text-sm">
+        <div className="fixed bottom-4 right-4 z-50 bg-background-default border border-border/50 rounded-lg shadow-lg px-4 py-3 text-sm animate-in slide-in-from-bottom-2">
           {inviteStatus}
         </div>
       )}
