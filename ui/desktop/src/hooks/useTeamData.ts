@@ -181,7 +181,11 @@ export const useTeamData = (identity: TeamUserIdentity | null) => {
           session.user.id,
           session.user.email ?? undefined
         );
-        setMessages((prev) => [...prev, msg]);
+        // Add with deduplication (realtime may also deliver this message)
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
       } catch (e) {
         setError(getErrorMessage(e));
       }
