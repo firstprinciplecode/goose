@@ -2,17 +2,51 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatState } from '../types/chatState';
 
 import {
-  Message,
-  MessageEvent,
   resumeAgent,
-  startAgent,
   Session,
-  TokenState,
   // updateSessionUserRecipeValues, // TODO: Implement this API endpoint
 } from '../api';
 import { client } from '../api/client.gen';
+import { 
+  Message, 
+  createUserMessage, 
+  getCompactingMessage, 
+  getThinkingMessage 
+} from '../types/message';
 
-import { createUserMessage, getCompactingMessage, getThinkingMessage } from '../types/message';
+// Local type definitions for SSE events
+interface TokenState {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  accumulatedInputTokens: number;
+  accumulatedOutputTokens: number;
+  accumulatedTotalTokens: number;
+}
+
+type MessageEvent = 
+  | { type: 'Message'; message: Message; token_state: TokenState }
+  | { type: 'Error'; error: string }
+  | { type: 'Finish'; reason: string }
+  | { type: 'ModelChange'; model: string; mode: string }
+  | { type: 'UpdateConversation'; conversation: Message[] }
+  | { type: 'Notification'; message: string }
+  | { type: 'Ping' };
+
+// Helper to convert API messages to local Message type
+// The API Message has `id: string | null | undefined` while local has `id?: string`
+function convertApiMessage(apiMsg: any): Message {
+  return {
+    ...apiMsg,
+    id: apiMsg.id ?? undefined,
+    created: apiMsg.created ?? Math.floor(Date.now() / 1000),
+  } as Message;
+}
+
+function convertApiMessages(apiMsgs: any[]): Message[] {
+  return apiMsgs.map(convertApiMessage);
+}
+
 
 const resultsCache = new Map<string, { messages: Message[]; session: Session }>();
 
@@ -61,22 +95,36 @@ function checkForGooseCommands(message: string, currentGooseEnabled: boolean): {
     return { skipAI: true, newGooseEnabled: currentGooseEnabled, isGooseCommand: false };
   }
   
-  // Check for friend mentions (Matrix user IDs or @username patterns)
-  // Matrix user IDs start with @ and contain a colon (e.g., @user:domain.com)
+  // Check for friend mentions (various patterns)
+  // These patterns indicate a user is @mentioning someone OTHER than goose
+  
+  // Matrix user IDs: @user:domain.com
   const matrixUserPattern = /@[a-zA-Z0-9._-]+:[a-zA-Z0-9.-]+/;
-  if (matrixUserPattern.test(message.trim())) {
+  
+  // Email-style mentions: @email@domain.com (like @hello@getantelope.com)
+  const emailMentionPattern = /@[a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+  
+  // Simple @username mentions anywhere in the message (not just at start)
+  // but exclude @goose
+  const simpleMentionPattern = /@([a-zA-Z0-9._-]+)(?:\s|$|[,!?.])/;
+  
+  // Check Matrix-style mentions
+  if (matrixUserPattern.test(message)) {
     console.log('👥 Detected Matrix user mention - skipping AI response');
     return { skipAI: true, newGooseEnabled: currentGooseEnabled, isGooseCommand: false };
   }
   
-  // Check for simple @username mentions (without domain)
-  const simpleMentionPattern = /^@[a-zA-Z0-9._-]+(\s|$)/;
-  if (simpleMentionPattern.test(message.trim())) {
-    // But allow @goose commands to pass through to be handled above
-    if (!message.trim().toLowerCase().startsWith('@goose')) {
-      console.log('👥 Detected user mention - skipping AI response');
-      return { skipAI: true, newGooseEnabled: currentGooseEnabled, isGooseCommand: false };
-    }
+  // Check email-style mentions (like @hello@getantelope.com)
+  if (emailMentionPattern.test(message)) {
+    console.log('👥 Detected email user mention - skipping AI response');
+    return { skipAI: true, newGooseEnabled: currentGooseEnabled, isGooseCommand: false };
+  }
+  
+  // Check simple @username mentions (but not @goose)
+  const simpleMentionMatch = message.match(simpleMentionPattern);
+  if (simpleMentionMatch && simpleMentionMatch[1].toLowerCase() !== 'goose') {
+    console.log('👥 Detected user mention:', simpleMentionMatch[1], '- skipping AI response');
+    return { skipAI: true, newGooseEnabled: currentGooseEnabled, isGooseCommand: false };
   }
   
   return { skipAI: false, newGooseEnabled: currentGooseEnabled, isGooseCommand: false };
@@ -313,8 +361,6 @@ export function useChatStream({
     accumulatedTotalTokens: 0,
   });
   const abortControllerRef = useRef<AbortController | null>(null);
-  const initialSessionIdRef = useRef<string>(sessionId);
-  const hasLoadedSessionRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (session) {
@@ -397,7 +443,7 @@ export function useChatStream({
       // Only use cache if it has messages - empty cache means we haven't loaded yet
       log.session('loaded-from-cache', sessionId, {
         messageCount: cached.messages.length,
-        sessionName: cached.session.name,
+        sessionDescription: cached.session.description,
       });
       setSession(cached.session);
       setMessagesAndLog(cached.messages, 'load-cached');
@@ -437,7 +483,7 @@ export function useChatStream({
 
         console.log('🔄 resumeAgent response:', {
           hasData: !!resumeResponse.data,
-          session: resumeResponse.data?.session,
+          sessionId: resumeResponse.data?.id,
           conversationLength: resumeResponse.data?.conversation?.length,
           fullResponse: resumeResponse
         });
@@ -452,27 +498,40 @@ export function useChatStream({
             throw new Error('Resume response missing session data');
           }
           
+          // Convert API messages to local Message type
+          const localMessages = convertApiMessages(conversation);
+          
+          // Get text content safely with type narrowing
+          const getFirstTextContent = (msg: Message) => {
+            const firstContent = msg.content[0];
+            return firstContent && 'text' in firstContent ? firstContent.text?.slice(0, 100) : undefined;
+          };
+          
           console.log('🔄 Processing resumed session:', {
             sessionId: loadedSession.id,
             sessionDescription: loadedSession.description,
-            conversationLength: conversation.length,
-            firstFewMessages: conversation.slice(0, 3).map(m => ({
+            conversationLength: localMessages.length,
+            firstFewMessages: localMessages.slice(0, 3).map(m => ({
               role: m.role,
-              content: m.content[0]?.text?.slice(0, 100)
+              content: getFirstTextContent(m)
             }))
           });
           
           log.session('resumed-existing', sessionId, {
-            messageCount: conversation.length,
+            messageCount: localMessages.length,
             sessionDescription: loadedSession.description,
-            conversationPreview: conversation.slice(0, 2).map(m => `${m.role}: ${m.content[0]?.text?.slice(0, 50)}...`)
+            conversationPreview: localMessages.slice(0, 2).map(m => {
+              const firstContent = m.content[0];
+              const text = firstContent && 'text' in firstContent ? firstContent.text?.slice(0, 50) : '';
+              return `${m.role}: ${text}...`;
+            })
           });
 
           setSession(loadedSession);
-          setMessagesAndLog(conversation, 'load-existing');
+          setMessagesAndLog(localMessages, 'load-existing');
           
           // Cache the loaded session and messages immediately
-          resultsCache.set(sessionId, { session: loadedSession, messages: conversation });
+          resultsCache.set(sessionId, { session: loadedSession, messages: localMessages });
           
           setChatState(ChatState.Idle);
           
@@ -536,7 +595,7 @@ export function useChatStream({
             sender: msg.sender,
             content: msg.content?.substring(0, 50) + '...',
             timestamp: msg.timestamp,
-            isGooseMessage: msg.isGooseMessage
+            type: msg.type // 'assistant' for Goose messages
           }))
         });
 
@@ -591,19 +650,24 @@ export function useChatStream({
         // Sort messages chronologically
         historicalMessages.sort((a, b) => (a.metadata?.originalTimestamp || 0) - (b.metadata?.originalTimestamp || 0));
 
+        // Helper to safely get text content
+        const getTextFromContent = (content: any) => {
+          return content && 'text' in content ? content.text?.substring(0, 50) + '...' : '[non-text]';
+        };
+
         console.log('📜 useChatStream: Converted Matrix history to messages:', {
           messageCount: historicalMessages.length,
           firstMessage: historicalMessages[0] ? {
             id: historicalMessages[0].id,
             role: historicalMessages[0].role,
             sender: historicalMessages[0].sender?.displayName || historicalMessages[0].sender?.userId,
-            content: historicalMessages[0].content[0]?.text?.substring(0, 50) + '...'
+            content: getTextFromContent(historicalMessages[0].content[0])
           } : null,
           lastMessage: historicalMessages[historicalMessages.length - 1] ? {
             id: historicalMessages[historicalMessages.length - 1].id,
             role: historicalMessages[historicalMessages.length - 1].role,
             sender: historicalMessages[historicalMessages.length - 1].sender?.displayName || historicalMessages[historicalMessages.length - 1].sender?.userId,
-            content: historicalMessages[historicalMessages.length - 1].content[0]?.text?.substring(0, 50) + '...'
+            content: getTextFromContent(historicalMessages[historicalMessages.length - 1].content[0])
           } : null
         });
 
@@ -782,7 +846,10 @@ export function useChatStream({
               throwOnError: true,
             });
             
-            currentSession = createResponse.data;
+            currentSession = createResponse.data as Session;
+            if (!currentSession) {
+              throw new Error('Session creation returned empty response');
+            }
             setSession(currentSession);
             log.session('session-created-for-message', currentSession.id, {
               originalSessionId: sessionId,
@@ -810,6 +877,11 @@ export function useChatStream({
             // Always remove from tracking set
             sessionCreationInProgress.delete(sessionId);
           }
+        }
+
+        // At this point currentSession must be defined (either from state or created above)
+        if (!currentSession) {
+          throw new Error('Session is unexpectedly undefined');
         }
 
         // Get the configured base URL and headers from the API client
@@ -889,7 +961,7 @@ export function useChatStream({
                 type: 'text',
                 text: '🔌 **Backend Unavailable**\n\nThe goose server is not running. To use the chat functionality:\n\n1. Start the goose server\n2. Ensure it\'s running on the correct port\n3. Try your message again\n\nFor now, you can still test the tabbed interface!'
               }],
-              created_at: new Date().toISOString(),
+              created: Math.floor(Date.now() / 1000),
             };
             
             const updatedMessages = [...currentMessages, mockResponse];
@@ -930,7 +1002,7 @@ export function useChatStream({
     // via resumeAgent is sufficient for the tabbed chat interface.
     if (session) {
       log.session('session-loaded', session.id, {
-        name: session.name,
+        description: session.description,
         messageCount: session.conversation?.length || 0,
       });
     }

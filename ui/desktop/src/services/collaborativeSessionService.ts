@@ -428,27 +428,44 @@ export async function getPendingInvites(
   userId: string,
   email?: string
 ): Promise<SessionInvite[]> {
-  // Build the filter - use proper and/or logic
+  // Build the target filter - match by user ID or email
   const targetFilter = email 
     ? `target_user_id.eq.${userId},target_email.ilike.${email.toLowerCase()}`
     : `target_user_id.eq.${userId}`;
 
-  // Query invites with session join only (profiles join is complex due to FK)
-  const { data: invites, error } = await client
+  // Build query with proper filter chain:
+  // - status = pending
+  // - (target_user_id = X OR target_email = Y)
+  // - (expires_at IS NULL OR expires_at > now)
+  const now = new Date().toISOString();
+  
+  let query = client
     .from('session_invites')
     .select(`
       *,
       collaborative_sessions:session_id(title, goose_session_id)
     `)
     .eq('status', 'pending')
-    .or(targetFilter)
-    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+    .or(targetFilter);
+  
+  // Add expiry filter - only include non-expired invites
+  // Note: We can't chain .or() calls for different conditions in PostgREST
+  // So we'll filter expires_at in JavaScript if needed, or use a single combined filter
+  const { data: invites, error } = await query;
 
   if (error) throw error;
   if (!invites || invites.length === 0) return [];
 
+  // Filter out expired invites in JavaScript
+  const validInvites = invites.filter((invite) => {
+    if (!invite.expires_at) return true; // No expiry = always valid
+    return new Date(invite.expires_at) > new Date(now);
+  });
+  
+  if (validInvites.length === 0) return [];
+
   // Fetch inviter profiles separately
-  const inviterIds = [...new Set(invites.map((i) => i.invited_by))];
+  const inviterIds = [...new Set(validInvites.map((i) => i.invited_by))];
   const { data: profiles } = await client
     .from('profiles')
     .select('user_id, display_name, email')
@@ -459,7 +476,7 @@ export async function getPendingInvites(
   );
 
   // Flatten joined data
-  return invites.map((invite) => {
+  return validInvites.map((invite) => {
     const inviterProfile = profileMap.get(invite.invited_by);
     return {
       ...invite,
