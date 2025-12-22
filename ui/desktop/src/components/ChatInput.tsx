@@ -1473,6 +1473,10 @@ export default function ChatInput({
                 }
                 
                 if (collabSession) {
+                  // Load the session into the collab hook so the host starts syncing messages
+                  await collab.actions.joinSession(collabSession.id);
+                  console.log('🔗 Joined collaborative session as host:', collabSession.id);
+                  
                   await inviteSupabaseUser(supabaseClient, collabSession.id, supabaseSession.user.id, targetUser.userId);
                   invitedUsersRef.current.add(targetUser.userId);
                   console.log('✅ Sent invite to:', targetUser.userId, '(', email, ')');
