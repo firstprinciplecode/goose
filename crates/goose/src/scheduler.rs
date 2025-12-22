@@ -1212,6 +1212,7 @@ async fn run_scheduled_job_internal(
             execution_mode: job.execution_mode.clone(),
             max_turns: None,
             retry_config: None,
+            collaborative_mode: false,
         };
 
         match agent

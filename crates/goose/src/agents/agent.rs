@@ -949,6 +949,31 @@ impl Agent {
         session: Option<SessionConfig>,
         cancel_token: Option<CancellationToken>,
     ) -> Result<BoxStream<'_, Result<AgentEvent>>> {
+        // Check for collaborative mode - only respond if message contains @goose
+        if let Some(ref session_config) = session {
+            if session_config.collaborative_mode {
+                // Check if the last user message contains @goose
+                let should_respond = unfixed_conversation
+                    .messages()
+                    .last()
+                    .filter(|msg| msg.role == rmcp::model::Role::User)
+                    .map(|msg| {
+                        super::collaborative::get_message_text(msg)
+                            .map(|text| super::collaborative::contains_goose_mention(&text))
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false);
+
+                if !should_respond {
+                    debug!("Collaborative mode: Skipping response (no @goose mention)");
+                    // Return an empty stream - no response needed
+                    return Ok(Box::pin(futures::stream::empty()));
+                }
+
+                debug!("Collaborative mode: @goose mentioned, processing message");
+            }
+        }
+
         // Handle auto-compaction before processing
         let (conversation, compaction_msg, _summarization_usage) = match self
             .handle_auto_compaction(unfixed_conversation.messages(), &session)

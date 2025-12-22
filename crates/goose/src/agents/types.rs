@@ -93,4 +93,7 @@ pub struct SessionConfig {
     /// Retry configuration for automated validation and recovery
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_config: Option<RetryConfig>,
+    /// Collaborative mode: when true, agent only responds to messages containing @goose
+    #[serde(default)]
+    pub collaborative_mode: bool,
 }

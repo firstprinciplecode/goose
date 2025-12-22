@@ -14,7 +14,7 @@
  * - Configurable batch size and delay
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Message } from '../types/message';
 import GooseMessage from './GooseMessage';
 import UserMessage from './UserMessage';
@@ -26,6 +26,9 @@ import { ChatType } from '../types/chat';
 import { MessageComment, TextSelection } from '../types/comment';
 import { groupMessages, GroupedMessage, getMessageSpacing } from '../utils/messageGrouping';
 import { useMatrix } from '../contexts/MatrixContext';
+import { CompactCollaboratorMessage } from './collaborative/CollaboratorMessage';
+import type { SessionHumanMessage } from '../services/collaborativeSessionService';
+import { containsGooseMention } from '../services/collaborativeSessionService';
 
 interface ProgressiveMessageListProps {
   messages: Message[];
@@ -57,6 +60,10 @@ interface ProgressiveMessageListProps {
   onResolveComment?: (commentId: string, resolved: boolean) => void;
   onCancelComment?: () => void;
   onFocusComment?: (commentId: string) => void;
+  // Collaborative session props
+  collaboratorMessages?: SessionHumanMessage[];
+  currentUserId?: string;
+  isCollaborativeSession?: boolean;
 }
 
 export default function ProgressiveMessageList({
@@ -88,6 +95,10 @@ export default function ProgressiveMessageList({
   onResolveComment,
   onCancelComment,
   onFocusComment,
+  // Collaborative session props
+  collaboratorMessages = [],
+  currentUserId,
+  isCollaborativeSession = false,
 }: ProgressiveMessageListProps) {
   const [renderedCount, setRenderedCount] = useState(() => {
     // Initialize with either all messages (if small) or first batch (if large)
@@ -203,6 +214,49 @@ export default function ProgressiveMessageList({
   // Get current user info from Matrix context for message grouping
   const { currentUser } = useMatrix();
 
+  // Create a merged timeline of agent messages and collaborator messages
+  // Each item has a timestamp and either a message or collaboratorMessage
+  type TimelineItem = 
+    | { type: 'agent'; message: Message; timestamp: number }
+    | { type: 'collaborator'; message: SessionHumanMessage; timestamp: number };
+
+  const mergedTimeline = useMemo((): TimelineItem[] => {
+    if (!isCollaborativeSession || collaboratorMessages.length === 0) {
+      // No collaborative messages, just use agent messages
+      return messages.slice(0, renderedCount).map((m) => ({
+        type: 'agent' as const,
+        message: m,
+        timestamp: m.created,
+      }));
+    }
+
+    // Build timeline with both message types
+    const timeline: TimelineItem[] = [];
+
+    // Add agent messages
+    messages.slice(0, renderedCount).forEach((m) => {
+      timeline.push({
+        type: 'agent' as const,
+        message: m,
+        timestamp: m.created,
+      });
+    });
+
+    // Add collaborator messages
+    collaboratorMessages.forEach((m) => {
+      timeline.push({
+        type: 'collaborator' as const,
+        message: m,
+        timestamp: new Date(m.created_at).getTime(),
+      });
+    });
+
+    // Sort by timestamp
+    timeline.sort((a, b) => a.timestamp - b.timestamp);
+
+    return timeline;
+  }, [messages, renderedCount, collaboratorMessages, isCollaborativeSession]);
+
   // Render messages up to the current rendered count
   const renderMessages = useCallback(() => {
     const messagesToRender = messages.slice(0, renderedCount);
@@ -222,8 +276,116 @@ export default function ProgressiveMessageList({
       return [];
     }
 
-    // Group messages for cleaner display
-    const groupedMessages = groupMessages(messagesToRender, isUserMessage, currentUser);
+    // If collaborative session, render merged timeline
+    if (isCollaborativeSession && collaboratorMessages.length > 0) {
+      return mergedTimeline.map((item, index) => {
+        if (item.type === 'collaborator') {
+          const collabMsg = item.message as SessionHumanMessage;
+          const isFromSelf = collabMsg.user_id === currentUserId;
+          const isGooseTrigger = collabMsg.message_type === 'goose_trigger' || containsGooseMention(collabMsg.content);
+          
+          // Check if previous message is from same user for grouping
+          const prevItem = mergedTimeline[index - 1];
+          const showHeader = !prevItem || 
+            prevItem.type !== 'collaborator' || 
+            (prevItem.message as SessionHumanMessage).user_id !== collabMsg.user_id;
+
+          return (
+            <CompactCollaboratorMessage
+              key={`collab-${collabMsg.id}`}
+              message={collabMsg}
+              isFromSelf={isFromSelf}
+              showHeader={showHeader}
+              isGooseTrigger={isGooseTrigger}
+              className="my-2"
+            />
+          );
+        }
+
+        // Agent message - use existing logic
+        const agentMsg = item.message as Message;
+        const isUser = isUserMessage(agentMsg);
+        const groupedMessage = agentMsg as GroupedMessage;
+        
+        // Find original index in messages array
+        const originalIndex = messages.findIndex(m => m.id === agentMsg.id);
+        
+        return (
+          <div
+            key={agentMsg.id && `${agentMsg.id}-${agentMsg.content.length}`}
+            className={`relative ${index === 0 ? 'mt-0' : 'mt-4'} ${isUser ? 'user' : 'assistant'}`}
+            data-testid="message-container"
+          >
+            {isUser ? (
+              <>
+                {hasCompactionMarker && hasCompactionMarker(agentMsg) ? (
+                  <CompactionMarker message={agentMsg} />
+                ) : (
+                  !hasOnlyToolResponses(agentMsg) && (
+                    <UserMessage 
+                      message={agentMsg} 
+                      onMessageUpdate={onMessageUpdate}
+                      showHeader={groupedMessage.showHeader}
+                      isGrouped={groupedMessage.isGrouped}
+                    />
+                  )
+                )}
+              </>
+            ) : (
+              <>
+                {hasCompactionMarker && hasCompactionMarker(agentMsg) ? (
+                  <CompactionMarker message={agentMsg} />
+                ) : (
+                  <GooseMessage
+                    sessionId={chat.sessionId}
+                    messageHistoryIndex={chat.messageHistoryIndex}
+                    message={agentMsg}
+                    messages={messages}
+                    messageIndex={originalIndex}
+                    append={append}
+                    appendMessage={appendMessage}
+                    toolCallNotifications={toolCallNotifications}
+                    tabId={tabId}
+                    isStreaming={
+                      isStreamingMessage &&
+                      !isUser &&
+                      index === mergedTimeline.length - 1 &&
+                      agentMsg.role === 'assistant'
+                    }
+                    showHeader={groupedMessage.showHeader}
+                    isGrouped={groupedMessage.isGrouped}
+                    comments={(() => {
+                      const uniqueMessageId = agentMsg.id || (() => {
+                        const contentHash = agentMsg.content
+                          .map(c => c.type === 'text' ? c.text.slice(0, 50) : c.type)
+                          .join('|');
+                        return `${agentMsg.role}-${agentMsg.created}-${originalIndex}-${contentHash.length}`;
+                      })();
+                      return comments.get(uniqueMessageId) || [];
+                    })()}
+                    activeSelection={activeSelection}
+                    activePosition={activePosition}
+                    activeMessageId={activeMessageId}
+                    isCreatingComment={isCreatingComment}
+                    onSelectionChange={onSelectionChange}
+                    onCreateComment={onCreateComment}
+                    onUpdateComment={onUpdateComment}
+                    onDeleteComment={onDeleteComment}
+                    onReplyToComment={onReplyToComment}
+                    onResolveComment={onResolveComment}
+                    onCancelComment={onCancelComment}
+                    onFocusComment={onFocusComment}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        );
+      }).filter(Boolean);
+    }
+
+    // Non-collaborative mode: Group messages for cleaner display
+    const groupedMessages = groupMessages(messagesToRender, isUserMessage, currentUser ?? undefined);
 
     return groupedMessages
       .map((groupedMessage, index) => {
@@ -333,6 +495,11 @@ export default function ProgressiveMessageList({
     onResolveComment,
     onCancelComment,
     onFocusComment,
+    // Collaborative session dependencies
+    collaboratorMessages,
+    currentUserId,
+    isCollaborativeSession,
+    mergedTimeline,
   ]);
 
   return (

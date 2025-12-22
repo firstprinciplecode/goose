@@ -259,6 +259,7 @@ async fn reply_handler(
             execution_mode: None,
             max_turns: None,
             retry_config: None,
+            collaborative_mode: false, // TODO: Add API support for collaborative mode
         };
 
         let mut stream = match agent

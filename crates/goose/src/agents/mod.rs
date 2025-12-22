@@ -1,4 +1,5 @@
 mod agent;
+pub mod collaborative;
 mod context;
 pub mod extension;
 pub mod extension_malware_check;
