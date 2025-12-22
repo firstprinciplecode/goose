@@ -1869,73 +1869,37 @@ export default function ChatInput({
     }
 
     // Handle Supabase connected users (prefixed with 'supabase:')
+    // NOTE: We only insert the mention text here. The invite is sent when the message is actually submitted.
     if (friendUserId.startsWith('supabase:')) {
-      const targetUserId = friendUserId.replace('supabase:', '');
-      console.log('🔗 Handling Supabase connected user invite:', targetUserId);
+      console.log('🔗 Inserting Supabase user mention (invite will be sent on submit):', displayName);
       
-      try {
-        if (!supabaseClient || !supabaseSession?.user?.id || !supabaseEnabled) {
-          throw new Error('Supabase not configured');
-        }
-        
-        // Get or create a collaborative session for this Goose session
-        let collabSession = sessionId ? await getSessionByGooseId(supabaseClient, sessionId) : null;
-        
-        if (!collabSession && sessionId) {
-          // Create a new collaborative session
-          collabSession = await createCollaborativeSession(supabaseClient, supabaseSession.user.id, {
-            gooseSessionId: sessionId,
-            title: `Session ${sessionId.slice(0, 8)}`,
-            collaborativeMode: true,
-          });
-          console.log('📝 Created collaborative session:', collabSession.id);
-        }
-        
-        if (collabSession) {
-          // Check if we already invited this user in this session
-          if (invitedUsersRef.current.has(targetUserId)) {
-            console.log('⏭️ Already invited user, skipping:', targetUserId);
-          } else {
-            // Send direct invite to the connected user
-            await inviteSupabaseUser(supabaseClient, collabSession.id, supabaseSession.user.id, targetUserId);
-            invitedUsersRef.current.add(targetUserId);
-            console.log('✅ Sent collaboration invite to:', targetUserId);
-          }
-        }
-        
-        // Update UI with the mention - use the display name passed from the popover
-        const mentionText = `@${displayName || mentionPopover.query || 'user'}`;
-        const beforeMention = displayValue.slice(0, mentionPopover.mentionStart);
-        const afterMention = displayValue.slice(
-          mentionPopover.mentionStart + 1 + mentionPopover.query.length
-        );
-        const newValue = `${beforeMention}${mentionText} ${afterMention}`;
+      // Just update UI with the mention - invite is created in performSubmit
+      const mentionText = `@${displayName || mentionPopover.query || 'user'}`;
+      const beforeMention = displayValue.slice(0, mentionPopover.mentionStart);
+      const afterMention = displayValue.slice(
+        mentionPopover.mentionStart + 1 + mentionPopover.query.length
+      );
+      const newValue = `${beforeMention}${mentionText} ${afterMention}`;
 
-        setDisplayValue(newValue);
-        setValue(newValue);
-        setMentionPopover((prev) => ({ ...prev, isOpen: false }));
-        textAreaRef.current?.focus();
+      setDisplayValue(newValue);
+      setValue(newValue);
+      setMentionPopover((prev) => ({ ...prev, isOpen: false }));
+      textAreaRef.current?.focus();
 
-        const newCursorPosition = beforeMention.length + mentionText.length + 1;
-        setTimeout(() => {
-          if (textAreaRef.current) {
-            textAreaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-            textAreaRef.current.focus();
-          }
-        }, 0);
-        
-        console.log('✅ Successfully invited connected user:', displayName);
-      } catch (error) {
-        console.error('❌ Failed to invite connected user:', error);
-        toastError({
-          title: 'Invitation Failed',
-          msg: error instanceof Error ? error.message : 'Failed to invite user to session',
-        });
-      }
+      const newCursorPosition = beforeMention.length + mentionText.length + 1;
+      setTimeout(() => {
+        if (textAreaRef.current) {
+          textAreaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
+          textAreaRef.current.focus();
+        }
+      }, 0);
+      
+      console.log('✅ Mention inserted, waiting for submit to send invite');
       return;
     }
     
-    // Matrix invites are deprecated/removed. If we got here, it's an unknown mention type.
+    // Fallback for unknown invite types - just show an error
+    console.warn('⚠️ Unknown friend invite type:', friendUserId);
     toastError({
       title: 'Invitation Failed',
       msg: 'Unknown mention target. Join a Team channel to invite connected users.',
