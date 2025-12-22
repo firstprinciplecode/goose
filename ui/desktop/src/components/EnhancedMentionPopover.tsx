@@ -88,12 +88,25 @@ const EnhancedMentionPopover = forwardRef<
 
   // Fetch connected users from Supabase (people who share Team channels)
   useEffect(() => {
-    if (!isOpen || !supabaseClient || !supabaseSession?.user?.id || !supabaseEnabled) return;
+    console.log('[Mention] Checking connected users fetch conditions:', {
+      isOpen,
+      hasSupabaseClient: !!supabaseClient,
+      supabaseEnabled,
+      userId: supabaseSession?.user?.id,
+    });
+    
+    if (!isOpen || !supabaseClient || !supabaseSession?.user?.id || !supabaseEnabled) {
+      if (isOpen) {
+        console.log('[Mention] Skipping connected users fetch - Supabase not ready. You may need to sign into Team first.');
+      }
+      return;
+    }
     
     const fetchConnectedUsers = async () => {
       try {
+        console.log('[Mention] Fetching connected users for:', supabaseSession.user.id);
         const users = await getConnectedUsers(supabaseClient, supabaseSession.user.id);
-        console.log('[Mention] Loaded connected users:', users.length);
+        console.log('[Mention] Loaded connected users:', users.length, users);
         setConnectedUsers(users);
       } catch (e) {
         console.error('[Mention] Failed to load connected users:', e);
@@ -278,7 +291,10 @@ const EnhancedMentionPopover = forwardRef<
     position, 
     query, 
     mentionItemsLength: mentionItems.length,
-    selectedIndex 
+    selectedIndex,
+    connectedUsersCount: connectedUsers.length,
+    supabaseEnabled,
+    hasSession: !!supabaseSession,
   });
 
   if (!isOpen) return null;
