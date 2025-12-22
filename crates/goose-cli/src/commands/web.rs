@@ -423,6 +423,7 @@ async fn process_message_streaming(
         execution_mode: None,
         max_turns: None,
         retry_config: None,
+        collaborative_mode: false,
     };
 
     match agent

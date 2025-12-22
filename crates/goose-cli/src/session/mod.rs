@@ -863,6 +863,7 @@ impl CliSession {
             execution_mode: None,
             max_turns: self.max_turns,
             retry_config: self.retry_config.clone(),
+            collaborative_mode: false,
         });
         let mut stream = self
             .agent
