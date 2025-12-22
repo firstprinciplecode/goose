@@ -42,7 +42,9 @@ import { useTabContext } from '../contexts/TabContext';
 import { 
   createCollaborativeSession, 
   getSessionByGooseId,
-  inviteUser as inviteSupabaseUser 
+  inviteUser as inviteSupabaseUser,
+  getUserByEmail,
+  extractEmailMentions,
 } from '../services/collaborativeSessionService';
 import {
   DropdownMenu,
@@ -1435,6 +1437,43 @@ export default function ChatInput({
           LocalMessageStorage.addMessage(displayValue);
         } else if (allFilePaths.length > 0) {
           LocalMessageStorage.addMessage(allFilePaths.join(' '));
+        }
+
+        // Check for @email mentions and create invites
+        const emailMentions = extractEmailMentions(textToSend);
+        if (emailMentions.length > 0 && supabaseClient && supabaseSession?.user?.id && supabaseEnabled && sessionId) {
+          console.log('📧 Found email mentions in message:', emailMentions);
+          
+          // Process each mention
+          for (const email of emailMentions) {
+            try {
+              // Look up the user by email
+              const targetUser = await getUserByEmail(supabaseClient, email);
+              if (targetUser) {
+                console.log('👤 Found user for email:', email, '->', targetUser.userId);
+                
+                // Get or create collaborative session
+                let collabSession = await getSessionByGooseId(supabaseClient, sessionId);
+                if (!collabSession) {
+                  collabSession = await createCollaborativeSession(supabaseClient, supabaseSession.user.id, {
+                    gooseSessionId: sessionId,
+                    title: `Session ${sessionId.slice(0, 8)}`,
+                    collaborativeMode: true,
+                  });
+                  console.log('📝 Created collaborative session:', collabSession?.id);
+                }
+                
+                if (collabSession) {
+                  await inviteSupabaseUser(supabaseClient, collabSession.id, supabaseSession.user.id, targetUser.userId);
+                  console.log('✅ Sent invite to:', targetUser.userId, '(', email, ')');
+                }
+              } else {
+                console.log('⚠️ No user found for email:', email);
+              }
+            } catch (inviteError) {
+              console.error('❌ Error creating invite for', email, ':', inviteError);
+            }
+          }
         }
 
         // Collaborative sessions: always publish the human message to Supabase.

@@ -818,3 +818,55 @@ export async function getConnectedUsers(
   return result;
 }
 
+/**
+ * Find a user by their email address
+ * Returns the user profile if found, null otherwise
+ */
+export async function getUserByEmail(
+  client: SupabaseClient,
+  email: string
+): Promise<{ userId: string; displayName: string; email: string } | null> {
+  console.log('[getUserByEmail] Looking up user:', email);
+  
+  const { data: profile, error } = await client
+    .from('profiles')
+    .select('user_id, display_name, email')
+    .ilike('email', email)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[getUserByEmail] Error:', error);
+    return null;
+  }
+
+  if (!profile) {
+    console.log('[getUserByEmail] User not found:', email);
+    return null;
+  }
+
+  console.log('[getUserByEmail] Found user:', profile.user_id);
+  return {
+    userId: profile.user_id,
+    displayName: profile.display_name || profile.email || profile.user_id.slice(0, 8),
+    email: profile.email || email,
+  };
+}
+
+/**
+ * Extract @mentions (email-style) from a message
+ * Returns array of email addresses mentioned
+ */
+export function extractEmailMentions(message: string): string[] {
+  // Match @email@domain.com patterns
+  const emailMentionPattern = /@([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+  const matches: string[] = [];
+  let match;
+  
+  while ((match = emailMentionPattern.exec(message)) !== null) {
+    matches.push(match[1]);
+  }
+  
+  console.log('[extractEmailMentions] Found mentions:', matches);
+  return matches;
+}
+
