@@ -125,6 +125,7 @@ export default function TeamView() {
       channels,
       messages,
       profiles,
+      teamMembers,
       selectedChannelId,
       selectedChannelType,
       isLoadingChannels,
@@ -181,43 +182,26 @@ export default function TeamView() {
     [channels, selectedChannelId]
   );
 
-  // Get unique people we've chatted with (from message profiles)
-  // These are the people to show under "Direct Messages"
+  // People to show under "People" section - all channel members
+  // These are fetched when channels load, so they appear immediately
   const dmPeople = useMemo(() => {
-    const peopleMap = new Map<string, { 
-      userId: string;
-      displayName: string; 
-      email?: string; 
-      dmChannelId?: string; // If we already have a DM with them
-    }>();
-    
-    // Add people from profiles (message senders we've seen)
-    Object.entries(profiles).forEach(([userId, p]) => {
-      // Skip ourselves
-      if (userId === session?.user?.id) return;
-      
-      const displayName = p.display_name || p.email || userId.slice(0, 8);
-      
+    return teamMembers.map((member) => {
       // Try to find an existing DM channel with this person
-      // DM channel names might be the person's name, email, or contain their userId
       const existingDm = dmChannels.find(c => 
-        c.name === displayName ||
-        c.name === p.email ||
-        c.name.includes(userId.slice(0, 8)) ||
-        // Also check if channel name looks like it could be for this user
-        (p.email && c.name.toLowerCase().includes(p.email.toLowerCase().split('@')[0]))
+        c.name === member.displayName ||
+        c.name === member.email ||
+        c.name.includes(member.userId.slice(0, 8)) ||
+        (member.email && c.name.toLowerCase().includes(member.email.toLowerCase().split('@')[0]))
       );
       
-      peopleMap.set(userId, {
-        userId,
-        displayName,
-        email: p.email,
+      return {
+        userId: member.userId,
+        displayName: member.displayName,
+        email: member.email,
         dmChannelId: existingDm?.id,
-      });
+      };
     });
-    
-    return Array.from(peopleMap.values());
-  }, [dmChannels, profiles, session?.user?.id]);
+  }, [dmChannels, teamMembers]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);

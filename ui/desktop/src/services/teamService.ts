@@ -203,6 +203,45 @@ export const fetchProfilesByUserIds = async (
   return map;
 };
 
+// Fetch all members of all channels the current user is a member of
+export const fetchAllChannelMembers = async (
+  client: SupabaseClient,
+  currentUserId: string
+): Promise<{ userId: string; displayName: string; email?: string }[]> => {
+  // First get all channel IDs the current user is a member of
+  const { data: myMemberships, error: memError } = await client
+    .from('channel_members')
+    .select('channel_id')
+    .eq('member_id', currentUserId);
+  
+  if (memError) throw memError;
+  if (!myMemberships?.length) return [];
+  
+  const channelIds = myMemberships.map(m => m.channel_id);
+  
+  // Get all members from those channels (excluding current user)
+  const { data: allMembers, error: allMemError } = await client
+    .from('channel_members')
+    .select('member_id')
+    .in('channel_id', channelIds)
+    .neq('member_id', currentUserId);
+  
+  if (allMemError) throw allMemError;
+  if (!allMembers?.length) return [];
+  
+  // Get unique user IDs
+  const uniqueUserIds = [...new Set(allMembers.map(m => m.member_id))];
+  
+  // Fetch their profiles
+  const profiles = await fetchProfilesByUserIds(client, uniqueUserIds);
+  
+  return uniqueUserIds.map(userId => ({
+    userId,
+    displayName: profiles[userId]?.display_name || profiles[userId]?.email || userId.slice(0, 8),
+    email: profiles[userId]?.email,
+  }));
+};
+
 export const createChannelInvite = async (
   client: SupabaseClient,
   channelId: string,

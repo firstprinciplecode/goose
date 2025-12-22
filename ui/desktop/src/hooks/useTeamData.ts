@@ -12,6 +12,7 @@ import {
   TeamUserIdentity,
   fetchProfilesByUserIds,
   addChannelMember,
+  fetchAllChannelMembers,
 } from '../services/teamService';
 
 // Helper to extract error message from various error types
@@ -31,10 +32,17 @@ const getErrorMessage = (e: unknown): string => {
   return String(e);
 };
 
+export type TeamMember = {
+  userId: string;
+  displayName: string;
+  email?: string;
+};
+
 export type UseTeamDataState = {
   channels: TeamChannel[];
   messages: TeamMessage[];
   profiles: Record<string, { display_name?: string; email?: string }>;
+  teamMembers: TeamMember[]; // All people from channels
   selectedChannelId: string | null;
   selectedChannelType: 'channel' | 'dm' | null;
   isLoadingChannels: boolean;
@@ -48,6 +56,7 @@ export const useTeamData = (identity: TeamUserIdentity | null) => {
   const [channels, setChannels] = useState<TeamChannel[]>([]);
   const [messages, setMessages] = useState<TeamMessage[]>([]);
   const [profiles, setProfiles] = useState<Record<string, { display_name?: string; email?: string }>>({});
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]); // All people from channels
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [selectedChannelType, setSelectedChannelType] = useState<'channel' | 'dm' | null>(null);
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
@@ -63,6 +72,7 @@ export const useTeamData = (identity: TeamUserIdentity | null) => {
   const loadChannels = useCallback(async () => {
     if (!client || !session || !identity?.userId) {
       setChannels([]);
+      setTeamMembers([]);
       setSelectedChannelId(null);
       setSelectedChannelType(null);
       return;
@@ -70,11 +80,25 @@ export const useTeamData = (identity: TeamUserIdentity | null) => {
     setIsLoadingChannels(true);
     setError(undefined);
     try {
-      const data = await listChannels(client);
-      setChannels(data);
-      if (!selectedChannelId && data.length > 0) {
-        setSelectedChannelId(data[0].id);
-        setSelectedChannelType((data[0].channel_type as 'channel' | 'dm') || 'channel');
+      // Load channels and members in parallel
+      const [channelData, membersData] = await Promise.all([
+        listChannels(client),
+        fetchAllChannelMembers(client, session.user.id),
+      ]);
+      
+      setChannels(channelData);
+      setTeamMembers(membersData);
+      
+      // Also populate profiles from team members for consistency
+      const profilesFromMembers: Record<string, { display_name?: string; email?: string }> = {};
+      membersData.forEach((m) => {
+        profilesFromMembers[m.userId] = { display_name: m.displayName, email: m.email };
+      });
+      setProfiles((prev) => ({ ...prev, ...profilesFromMembers }));
+      
+      if (!selectedChannelId && channelData.length > 0) {
+        setSelectedChannelId(channelData[0].id);
+        setSelectedChannelType((channelData[0].channel_type as 'channel' | 'dm') || 'channel');
       }
     } catch (e) {
       setError(getErrorMessage(e));
@@ -239,6 +263,7 @@ export const useTeamData = (identity: TeamUserIdentity | null) => {
       setChannels([]);
       setMessages([]);
       setProfiles({});
+      setTeamMembers([]);
       setSelectedChannelId(null);
       setSelectedChannelType(null);
       setMessagesCursor(null);
@@ -250,6 +275,7 @@ export const useTeamData = (identity: TeamUserIdentity | null) => {
       channels,
       messages,
       profiles,
+      teamMembers,
       selectedChannelId,
       selectedChannelType,
       isLoadingChannels,
