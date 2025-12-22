@@ -15,3 +15,7 @@ export type { CollabInviteModalProps } from './CollabInviteModal';
 
 export { CollaborativeSessionBar } from './CollaborativeSessionBar';
 export type { CollaborativeSessionBarProps } from './CollaborativeSessionBar';
+
+export { SessionInviteNotification } from './SessionInviteNotification';
+
+export type { ConnectedUser } from './CollabInviteModal';

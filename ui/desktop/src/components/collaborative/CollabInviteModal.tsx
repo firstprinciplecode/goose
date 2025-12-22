@@ -41,6 +41,13 @@ const CheckIcon = ({ size = 16, className = '' }: { size?: number; className?: s
 // Types
 // =============================================================================
 
+export interface ConnectedUser {
+  userId: string;
+  displayName: string;
+  email?: string;
+  avatarUrl?: string;
+}
+
 export interface CollabInviteModalProps {
   /** Whether the modal is open */
   isOpen: boolean;
@@ -48,9 +55,13 @@ export interface CollabInviteModalProps {
   onClose: () => void;
   /** Session title for display */
   sessionTitle?: string;
-  /** Function to create an invite link */
+  /** Function to create an invite link (for non-connected users) */
   onCreateInvite: (targetEmail?: string) => Promise<string>;
-  /** Optional: list of contacts for autocomplete */
+  /** Function to directly invite a connected user */
+  onInviteUser?: (userId: string) => Promise<void>;
+  /** Connected users who can be invited directly */
+  connectedUsers?: ConnectedUser[];
+  /** Optional: list of contacts for autocomplete (for email invites) */
   contacts?: { email: string; displayName?: string }[];
 }
 
@@ -63,6 +74,8 @@ export const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
   onClose,
   sessionTitle = 'this session',
   onCreateInvite,
+  onInviteUser,
+  connectedUsers = [],
   contacts = [],
 }) => {
   const [targetEmail, setTargetEmail] = useState('');
@@ -71,6 +84,10 @@ export const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showEmailRestriction, setShowEmailRestriction] = useState(false);
+  const [invitedUsers, setInvitedUsers] = useState<Set<string>>(new Set());
+  const [inviteMode, setInviteMode] = useState<'users' | 'link'>(
+    connectedUsers.length > 0 ? 'users' : 'link'
+  );
 
   const handleCreateInvite = useCallback(async () => {
     setIsLoading(true);
@@ -87,6 +104,22 @@ export const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
     }
   }, [onCreateInvite, targetEmail, showEmailRestriction]);
 
+  const handleInviteUser = useCallback(async (user: ConnectedUser) => {
+    if (!onInviteUser || invitedUsers.has(user.userId)) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      await onInviteUser(user.userId);
+      setInvitedUsers((prev) => new Set(prev).add(user.userId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to send invite');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [onInviteUser, invitedUsers]);
+
   const handleCopy = useCallback(() => {
     if (!inviteLink) return;
     void navigator.clipboard.writeText(inviteLink);
@@ -101,6 +134,7 @@ export const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
     setError(null);
     setCopied(false);
     setShowEmailRestriction(false);
+    setInvitedUsers(new Set());
     onClose();
   }, [onClose]);
 
@@ -126,53 +160,160 @@ export const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
         <div className="p-6 space-y-4">
           {!inviteLink ? (
             <>
-              <p className="text-sm text-text-muted">
-                Create an invite link to share {sessionTitle} with a collaborator.
-                They'll be able to chat inline and use <code className="text-xs bg-background-muted px-1 py-0.5 rounded">@goose</code> to trigger agent responses.
-              </p>
-
-              {/* Email restriction toggle */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="restrict-email"
-                  checked={showEmailRestriction}
-                  onChange={(e) => setShowEmailRestriction(e.target.checked)}
-                  className="w-4 h-4 rounded border-border"
-                />
-                <label htmlFor="restrict-email" className="text-sm text-text-muted">
-                  Restrict to specific email
-                </label>
-              </div>
-
-              {/* Email input (conditional) */}
-              {showEmailRestriction && (
-                <div className="space-y-2">
-                  <label htmlFor="target-email" className="text-sm font-medium">
-                    Email address
-                  </label>
-                  <Input
-                    id="target-email"
-                    type="email"
-                    placeholder="collaborator@example.com"
-                    value={targetEmail}
-                    onChange={(e) => setTargetEmail(e.target.value)}
-                    className="h-10"
-                    list="contacts-list"
-                  />
-                  {contacts.length > 0 && (
-                    <datalist id="contacts-list">
-                      {contacts.map((c) => (
-                        <option key={c.email} value={c.email}>
-                          {c.displayName || c.email}
-                        </option>
-                      ))}
-                    </datalist>
-                  )}
-                  <p className="text-xs text-text-muted">
-                    Only this email will be able to join
-                  </p>
+              {/* Mode toggle if connected users exist */}
+              {connectedUsers.length > 0 && (
+                <div className="flex gap-1 p-1 bg-background-muted/50 rounded-lg">
+                  <button
+                    className={`flex-1 px-3 py-2 text-sm rounded-md transition-colors ${
+                      inviteMode === 'users'
+                        ? 'bg-background-default text-text-default font-medium shadow-sm'
+                        : 'text-text-muted hover:text-text-default'
+                    }`}
+                    onClick={() => setInviteMode('users')}
+                  >
+                    Connected Users
+                  </button>
+                  <button
+                    className={`flex-1 px-3 py-2 text-sm rounded-md transition-colors ${
+                      inviteMode === 'link'
+                        ? 'bg-background-default text-text-default font-medium shadow-sm'
+                        : 'text-text-muted hover:text-text-default'
+                    }`}
+                    onClick={() => setInviteMode('link')}
+                  >
+                    Invite Link
+                  </button>
                 </div>
+              )}
+
+              {/* Connected Users Mode */}
+              {inviteMode === 'users' && connectedUsers.length > 0 && (
+                <>
+                  <p className="text-sm text-text-muted">
+                    Invite someone you're connected with to join {sessionTitle}.
+                    They'll receive an instant notification.
+                  </p>
+                  
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {connectedUsers.map((user) => {
+                      const isInvited = invitedUsers.has(user.userId);
+                      return (
+                        <div
+                          key={user.userId}
+                          className="flex items-center gap-3 p-3 rounded-lg border border-border/30 bg-background-muted/30 hover:bg-background-muted/50 transition-colors"
+                        >
+                          {/* Avatar */}
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500/40 to-purple-500/40 flex items-center justify-center text-sm font-medium shrink-0">
+                            {user.avatarUrl ? (
+                              <img src={user.avatarUrl} alt="" className="w-full h-full rounded-full object-cover" />
+                            ) : (
+                              user.displayName.slice(0, 2).toUpperCase()
+                            )}
+                          </div>
+                          
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{user.displayName}</p>
+                            {user.email && (
+                              <p className="text-xs text-text-muted truncate">{user.email}</p>
+                            )}
+                          </div>
+                          
+                          {/* Invite button */}
+                          <Button
+                            variant={isInvited ? 'ghost' : 'outline'}
+                            size="sm"
+                            className="shrink-0 h-8"
+                            disabled={isLoading || isInvited}
+                            onClick={() => void handleInviteUser(user)}
+                          >
+                            {isInvited ? (
+                              <>
+                                <CheckIcon size={14} className="text-green-500 mr-1" />
+                                Invited
+                              </>
+                            ) : (
+                              'Invite'
+                            )}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {invitedUsers.size > 0 && (
+                    <p className="text-xs text-green-600 dark:text-green-400">
+                      ✓ {invitedUsers.size} invite{invitedUsers.size > 1 ? 's' : ''} sent!
+                    </p>
+                  )}
+                </>
+              )}
+
+              {/* Link Invite Mode */}
+              {(inviteMode === 'link' || connectedUsers.length === 0) && (
+                <>
+                  <p className="text-sm text-text-muted">
+                    Create an invite link to share {sessionTitle} with a collaborator.
+                    They'll be able to chat inline and use <code className="text-xs bg-background-muted px-1 py-0.5 rounded">@goose</code> to trigger agent responses.
+                  </p>
+
+                  {/* Email restriction toggle */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="restrict-email"
+                      checked={showEmailRestriction}
+                      onChange={(e) => setShowEmailRestriction(e.target.checked)}
+                      className="w-4 h-4 rounded border-border"
+                    />
+                    <label htmlFor="restrict-email" className="text-sm text-text-muted">
+                      Restrict to specific email
+                    </label>
+                  </div>
+
+                  {/* Email input (conditional) */}
+                  {showEmailRestriction && (
+                    <div className="space-y-2">
+                      <label htmlFor="target-email" className="text-sm font-medium">
+                        Email address
+                      </label>
+                      <Input
+                        id="target-email"
+                        type="email"
+                        placeholder="collaborator@example.com"
+                        value={targetEmail}
+                        onChange={(e) => setTargetEmail(e.target.value)}
+                        className="h-10"
+                        list="contacts-list"
+                      />
+                      {contacts.length > 0 && (
+                        <datalist id="contacts-list">
+                          {contacts.map((c) => (
+                            <option key={c.email} value={c.email}>
+                              {c.displayName || c.email}
+                            </option>
+                          ))}
+                        </datalist>
+                      )}
+                      <p className="text-xs text-text-muted">
+                        Only this email will be able to join
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Actions for link mode */}
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="ghost" onClick={handleClose}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleCreateInvite}
+                      disabled={isLoading || (showEmailRestriction && !targetEmail)}
+                    >
+                      {isLoading ? 'Creating...' : 'Create Invite Link'}
+                    </Button>
+                  </div>
+                </>
               )}
 
               {error && (
@@ -181,18 +322,14 @@ export const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="ghost" onClick={handleClose}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateInvite}
-                  disabled={isLoading || (showEmailRestriction && !targetEmail)}
-                >
-                  {isLoading ? 'Creating...' : 'Create Invite Link'}
-                </Button>
-              </div>
+              {/* Done button for users mode */}
+              {inviteMode === 'users' && connectedUsers.length > 0 && (
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="ghost" onClick={handleClose}>
+                    {invitedUsers.size > 0 ? 'Done' : 'Cancel'}
+                  </Button>
+                </div>
+              )}
             </>
           ) : (
             <>

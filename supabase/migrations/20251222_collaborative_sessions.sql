@@ -75,27 +75,36 @@ create index if not exists idx_session_human_messages_session
 -- =============================================================================
 -- TABLE: session_invites
 -- Pending invitations to collaborative sessions
+-- Supports both direct user invites (target_user_id) and email/token invites
 -- =============================================================================
 create table if not exists public.session_invites (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references public.collaborative_sessions(id) on delete cascade,
   invited_by uuid not null references auth.users(id) on delete cascade,
-  target_email text not null,
-  invite_token text not null unique default encode(gen_random_bytes(16), 'hex'),
+  target_user_id uuid references auth.users(id) on delete cascade, -- Direct invite to connected user
+  target_email text, -- Email invite (for non-connected users)
+  invite_token text unique default encode(gen_random_bytes(16), 'hex'),
   status text not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'expired')),
   expires_at timestamptz default (now() + interval '7 days'),
   created_at timestamptz default now(),
   redeemed_at timestamptz,
-  redeemed_by uuid references auth.users(id)
+  redeemed_by uuid references auth.users(id),
+  
+  -- At least one target must be specified
+  constraint session_invite_has_target check (target_user_id is not null or target_email is not null)
 );
 
 -- Index for looking up invites by token
 create index if not exists idx_session_invites_token 
-  on public.session_invites(invite_token);
+  on public.session_invites(invite_token) where invite_token is not null;
 
 -- Index for finding pending invites for a user by email
 create index if not exists idx_session_invites_email 
-  on public.session_invites(target_email, status);
+  on public.session_invites(target_email, status) where target_email is not null;
+
+-- Index for finding pending direct invites for a user
+create index if not exists idx_session_invites_user
+  on public.session_invites(target_user_id, status) where target_user_id is not null;
 
 -- =============================================================================
 -- FUNCTIONS
@@ -190,6 +199,54 @@ begin
 end;
 $$ language plpgsql security definer;
 
+-- Function to accept a direct session invite by ID (for connected users)
+create or replace function public.accept_session_invite(p_invite_id uuid)
+returns uuid as $$
+declare
+  v_invite record;
+begin
+  -- Find and validate the invite
+  select * into v_invite
+  from public.session_invites
+  where id = p_invite_id
+    and status = 'pending'
+    and (expires_at is null or expires_at > now())
+    and (target_user_id = auth.uid() or lower(target_email) = lower(jwt_user_email()));
+
+  if v_invite is null then
+    raise exception 'Invalid, expired, or unauthorized invite';
+  end if;
+
+  -- Add user as participant
+  insert into public.session_participants (session_id, user_id, role, is_active)
+  values (v_invite.session_id, auth.uid(), 'collaborator', true)
+  on conflict (session_id, user_id) 
+  do update set is_active = true, left_at = null, joined_at = now();
+
+  -- Mark invite as accepted
+  update public.session_invites
+  set status = 'accepted',
+      redeemed_at = now(),
+      redeemed_by = auth.uid()
+  where id = v_invite.id;
+
+  return v_invite.session_id;
+end;
+$$ language plpgsql security definer;
+
+-- Function to decline a session invite
+create or replace function public.decline_session_invite(p_invite_id uuid)
+returns void as $$
+begin
+  update public.session_invites
+  set status = 'declined',
+      redeemed_at = now()
+  where id = p_invite_id
+    and status = 'pending'
+    and (target_user_id = auth.uid() or lower(target_email) = lower(jwt_user_email()));
+end;
+$$ language plpgsql security definer;
+
 -- =============================================================================
 -- ROW LEVEL SECURITY
 -- =============================================================================
@@ -279,6 +336,7 @@ create policy "Users can view invites they created or are targeted to them"
   on public.session_invites for select
   using (
     invited_by = auth.uid() or
+    target_user_id = auth.uid() or
     lower(target_email) = lower(jwt_user_email())
   );
 
@@ -293,9 +351,13 @@ create policy "Session participants can create invites"
     )
   );
 
-create policy "Invite creator can update their invites"
+create policy "Invite creator or target can update invites"
   on public.session_invites for update
-  using (invited_by = auth.uid() or lower(target_email) = lower(jwt_user_email()));
+  using (
+    invited_by = auth.uid() or 
+    target_user_id = auth.uid() or
+    lower(target_email) = lower(jwt_user_email())
+  );
 
 -- =============================================================================
 -- REALTIME
@@ -310,4 +372,7 @@ alter table public.session_participants replica identity full;
 
 -- Enable realtime for session state changes
 alter table public.collaborative_sessions replica identity full;
+
+-- Enable realtime for invites (for instant invite notifications)
+alter table public.session_invites replica identity full;
 

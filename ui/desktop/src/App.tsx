@@ -38,6 +38,7 @@ import { useConfig, ConfigProvider } from './components/ConfigContext';
 import { ModelAndProviderProvider } from './components/ModelAndProviderContext';
 import PermissionSettingsView from './components/settings/permission/PermissionSetting';
 import TeamView from './components/TeamView';
+import { SessionInviteNotification } from './components/collaborative';
 import { BackgroundProvider } from './contexts/BackgroundContext';
 
 import ExtensionsView, { ExtensionsViewOptions } from './components/extensions/ExtensionsView';
@@ -685,7 +686,8 @@ export function AppInner() {
           setIsGoosehintsModalOpen={setIsGoosehintsModalOpen}
         />
       )}
-      {/* Matrix notifications removed in this branch */}
+      {/* Supabase-based session invite notifications */}
+      <SessionInviteNotification />
     </>
   );
 }

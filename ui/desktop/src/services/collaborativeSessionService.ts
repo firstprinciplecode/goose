@@ -52,13 +52,19 @@ export interface SessionInvite {
   id: string;
   session_id: string;
   invited_by: string;
-  target_email: string;
-  invite_token: string;
+  target_user_id?: string; // Direct invite to connected user
+  target_email?: string; // Email invite
+  invite_token?: string;
   status: 'pending' | 'accepted' | 'declined' | 'expired';
   expires_at?: string;
   created_at: string;
   redeemed_at?: string;
   redeemed_by?: string;
+  // Joined data for display
+  inviter_display_name?: string;
+  inviter_email?: string;
+  session_title?: string;
+  goose_session_id?: string;
 }
 
 export interface CreateSessionOptions {
@@ -68,7 +74,8 @@ export interface CreateSessionOptions {
 }
 
 export interface InviteOptions {
-  targetEmail?: string;
+  targetUserId?: string; // Direct invite to connected user
+  targetEmail?: string; // Email invite
   expiresInDays?: number;
 }
 
@@ -327,6 +334,7 @@ export async function getMessages(
 
 /**
  * Create an invite to a collaborative session
+ * Can be a direct invite (targetUserId) or email invite (targetEmail)
  */
 export async function createInvite(
   client: SupabaseClient,
@@ -338,19 +346,67 @@ export async function createInvite(
     ? new Date(Date.now() + options.expiresInDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
+  // Build insert object based on invite type
+  const insertData: Record<string, unknown> = {
+    session_id: sessionId,
+    invited_by: invitedBy,
+    expires_at: expiresAt,
+  };
+
+  if (options?.targetUserId) {
+    // Direct invite to connected user - no token needed
+    insertData.target_user_id = options.targetUserId;
+    insertData.invite_token = null; // Disable token for direct invites
+  } else if (options?.targetEmail) {
+    // Email/token invite
+    insertData.target_email = options.targetEmail;
+  } else {
+    throw new Error('Either targetUserId or targetEmail must be specified');
+  }
+
   const { data, error } = await client
     .from('session_invites')
-    .insert({
-      session_id: sessionId,
-      invited_by: invitedBy,
-      target_email: options?.targetEmail || '',
-      expires_at: expiresAt,
-    })
+    .insert(insertData)
     .select()
     .single();
 
   if (error) throw error;
   return data;
+}
+
+/**
+ * Create a direct invite to a connected user
+ */
+export async function inviteUser(
+  client: SupabaseClient,
+  sessionId: string,
+  invitedBy: string,
+  targetUserId: string
+): Promise<SessionInvite> {
+  return createInvite(client, sessionId, invitedBy, { targetUserId, expiresInDays: 1 });
+}
+
+/**
+ * Accept a session invite by ID
+ */
+export async function acceptInvite(
+  client: SupabaseClient,
+  inviteId: string
+): Promise<string> {
+  const { data, error } = await client.rpc('accept_session_invite', { p_invite_id: inviteId });
+  if (error) throw error;
+  return data as string; // Returns session_id
+}
+
+/**
+ * Decline a session invite
+ */
+export async function declineInvite(
+  client: SupabaseClient,
+  inviteId: string
+): Promise<void> {
+  const { error } = await client.rpc('decline_session_invite', { p_invite_id: inviteId });
+  if (error) throw error;
 }
 
 /**
@@ -366,24 +422,39 @@ export async function redeemInvite(
 }
 
 /**
- * Get pending invites for a user by email
+ * Get pending invites for the current user (by user ID or email)
  */
 export async function getPendingInvites(
   client: SupabaseClient,
-  email: string
+  userId: string,
+  email?: string
 ): Promise<SessionInvite[]> {
-  const { data, error } = await client
+  // Build OR filter: target_user_id = userId OR target_email = email
+  let query = client
     .from('session_invites')
     .select(`
       *,
-      collaborative_sessions:session_id(title, goose_session_id)
+      collaborative_sessions:session_id(title, goose_session_id),
+      inviter:invited_by(display_name, email)
     `)
-    .eq('target_email', email.toLowerCase())
     .eq('status', 'pending')
-    .gt('expires_at', new Date().toISOString());
+    .or(`target_user_id.eq.${userId}${email ? `,target_email.ilike.${email.toLowerCase()}` : ''}`);
+
+  // Only get non-expired invites
+  query = query.or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
+
+  const { data, error } = await query;
 
   if (error) throw error;
-  return data || [];
+
+  // Flatten joined data
+  return (data || []).map((invite) => ({
+    ...invite,
+    session_title: invite.collaborative_sessions?.title,
+    goose_session_id: invite.collaborative_sessions?.goose_session_id,
+    inviter_display_name: invite.inviter?.display_name,
+    inviter_email: invite.inviter?.email,
+  }));
 }
 
 // =============================================================================
@@ -509,6 +580,61 @@ export function subscribeToSession(
   return channel;
 }
 
+/**
+ * Subscribe to incoming invites for the current user
+ * This enables real-time notifications when someone invites you
+ */
+export function subscribeToIncomingInvites(
+  client: SupabaseClient,
+  userId: string,
+  onInvite: (invite: SessionInvite) => void
+): RealtimeChannel {
+  const channel = client.channel(`collab-invites-${userId}`);
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'session_invites',
+      filter: `target_user_id=eq.${userId}`,
+    },
+    async (payload) => {
+      console.log('[CollabSession] Received invite:', payload);
+      // Fetch full invite with joined data
+      const { data } = await client
+        .from('session_invites')
+        .select(`
+          *,
+          collaborative_sessions:session_id(title, goose_session_id),
+          inviter:invited_by(display_name, email)
+        `)
+        .eq('id', payload.new.id)
+        .single();
+
+      if (data) {
+        onInvite({
+          ...data,
+          session_title: data.collaborative_sessions?.title,
+          goose_session_id: data.collaborative_sessions?.goose_session_id,
+          inviter_display_name: data.inviter?.display_name,
+          inviter_email: data.inviter?.email,
+        } as SessionInvite);
+      }
+    }
+  );
+
+  channel.subscribe((status, err) => {
+    if (status === 'SUBSCRIBED') {
+      console.log('[CollabSession] Subscribed to incoming invites for user:', userId);
+    } else if (err) {
+      console.error('[CollabSession] Invite subscription error:', err);
+    }
+  });
+
+  return channel;
+}
+
 // =============================================================================
 // Utility Functions
 // =============================================================================
@@ -537,5 +663,79 @@ export function parseEmailMentions(content: string): string[] {
   const emailPattern = /@([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
   const matches = content.matchAll(emailPattern);
   return Array.from(matches, (m) => m[1]);
+}
+
+/**
+ * Parse @username mentions from content (display names without spaces)
+ * Returns array of usernames found
+ */
+export function parseUserMentions(content: string): string[] {
+  // Match @username patterns (alphanumeric, dots, underscores, hyphens)
+  // Exclude @goose and email patterns
+  const mentionPattern = /@([a-zA-Z][a-zA-Z0-9._-]*)/g;
+  const matches = content.matchAll(mentionPattern);
+  return Array.from(matches, (m) => m[1]).filter(
+    (name) => name.toLowerCase() !== 'goose' && !name.includes('@')
+  );
+}
+
+// =============================================================================
+// Connected Users (for direct invites)
+// =============================================================================
+
+export interface ConnectedUser {
+  userId: string;
+  displayName: string;
+  email?: string;
+  avatarUrl?: string;
+}
+
+/**
+ * Get users that are connected to the current user
+ * (share at least one channel or have had a DM)
+ */
+export async function getConnectedUsers(
+  client: SupabaseClient,
+  currentUserId: string
+): Promise<ConnectedUser[]> {
+  // Get all channel IDs the current user is a member of
+  const { data: myChannels, error: channelError } = await client
+    .from('channel_members')
+    .select('channel_id')
+    .eq('member_id', currentUserId);
+
+  if (channelError) throw channelError;
+  if (!myChannels || myChannels.length === 0) return [];
+
+  const channelIds = myChannels.map((c) => c.channel_id);
+
+  // Get all other members of those channels
+  const { data: members, error: memberError } = await client
+    .from('channel_members')
+    .select(`
+      member_id,
+      profiles:member_id(user_id, display_name, email, avatar_url)
+    `)
+    .in('channel_id', channelIds)
+    .neq('member_id', currentUserId);
+
+  if (memberError) throw memberError;
+
+  // Deduplicate by user ID
+  const userMap = new Map<string, ConnectedUser>();
+  (members || []).forEach((m) => {
+    // Handle profile which could be an array or single object from the join
+    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+    if (profile && !userMap.has(m.member_id)) {
+      userMap.set(m.member_id, {
+        userId: m.member_id,
+        displayName: profile.display_name || profile.email || m.member_id.slice(0, 8),
+        email: profile.email,
+        avatarUrl: profile.avatar_url,
+      });
+    }
+  });
+
+  return Array.from(userMap.values());
 }
 
