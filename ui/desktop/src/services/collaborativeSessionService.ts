@@ -118,9 +118,12 @@ export async function getSessionByGooseId(
     .select('*')
     .eq('goose_session_id', gooseSessionId)
     .eq('is_active', true)
-    .single();
+    .maybeSingle(); // Use maybeSingle to handle 0 rows gracefully
 
-  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows
+  if (error) {
+    console.error('[getSessionByGooseId] Error:', error);
+    throw error;
+  }
   return data;
 }
 
