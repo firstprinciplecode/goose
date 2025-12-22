@@ -513,6 +513,9 @@ export default function ChatInput({
   // Track which assistant messages we've already published to Supabase
   const publishedAssistantIdsRef = useRef<Set<string>>(new Set());
 
+  // Track which users we've already invited in this session (to prevent duplicate invites)
+  const invitedUsersRef = useRef<Set<string>>(new Set());
+
   // Publish host AI responses to Supabase so collaborators on other machines can see them.
   useEffect(() => {
     if (!messages || !Array.isArray(messages) || messages.length === 0) return;
@@ -1450,6 +1453,12 @@ export default function ChatInput({
               // Look up the user by email
               const targetUser = await getUserByEmail(supabaseClient, email);
               if (targetUser) {
+                // Check if we already invited this user in this session
+                if (invitedUsersRef.current.has(targetUser.userId)) {
+                  console.log('⏭️ Already invited user via dropdown, skipping:', email);
+                  continue;
+                }
+                
                 console.log('👤 Found user for email:', email, '->', targetUser.userId);
                 
                 // Get or create collaborative session
@@ -1465,6 +1474,7 @@ export default function ChatInput({
                 
                 if (collabSession) {
                   await inviteSupabaseUser(supabaseClient, collabSession.id, supabaseSession.user.id, targetUser.userId);
+                  invitedUsersRef.current.add(targetUser.userId);
                   console.log('✅ Sent invite to:', targetUser.userId, '(', email, ')');
                 }
               } else {
@@ -1882,9 +1892,15 @@ export default function ChatInput({
         }
         
         if (collabSession) {
-          // Send direct invite to the connected user
-          await inviteSupabaseUser(supabaseClient, collabSession.id, supabaseSession.user.id, targetUserId);
-          console.log('✅ Sent collaboration invite to:', targetUserId);
+          // Check if we already invited this user in this session
+          if (invitedUsersRef.current.has(targetUserId)) {
+            console.log('⏭️ Already invited user, skipping:', targetUserId);
+          } else {
+            // Send direct invite to the connected user
+            await inviteSupabaseUser(supabaseClient, collabSession.id, supabaseSession.user.id, targetUserId);
+            invitedUsersRef.current.add(targetUserId);
+            console.log('✅ Sent collaboration invite to:', targetUserId);
+          }
         }
         
         // Update UI with the mention - use the display name passed from the popover
