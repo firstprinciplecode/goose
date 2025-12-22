@@ -698,44 +698,87 @@ export async function getConnectedUsers(
   client: SupabaseClient,
   currentUserId: string
 ): Promise<ConnectedUser[]> {
+  console.log('[getConnectedUsers] Fetching for user:', currentUserId);
+  
   // Get all channel IDs the current user is a member of
   const { data: myChannels, error: channelError } = await client
     .from('channel_members')
     .select('channel_id')
     .eq('member_id', currentUserId);
 
-  if (channelError) throw channelError;
-  if (!myChannels || myChannels.length === 0) return [];
+  if (channelError) {
+    console.error('[getConnectedUsers] Error fetching my channels:', channelError);
+    throw channelError;
+  }
+  
+  if (!myChannels || myChannels.length === 0) {
+    console.log('[getConnectedUsers] No channels found for user');
+    return [];
+  }
 
   const channelIds = myChannels.map((c) => c.channel_id);
+  console.log('[getConnectedUsers] Found channels:', channelIds.length);
 
-  // Get all other members of those channels
+  // Get all other members of those channels (just member_id, no join)
   const { data: members, error: memberError } = await client
     .from('channel_members')
-    .select(`
-      member_id,
-      profiles:member_id(user_id, display_name, email, avatar_url)
-    `)
+    .select('member_id')
     .in('channel_id', channelIds)
     .neq('member_id', currentUserId);
 
-  if (memberError) throw memberError;
+  if (memberError) {
+    console.error('[getConnectedUsers] Error fetching channel members:', memberError);
+    throw memberError;
+  }
 
-  // Deduplicate by user ID
+  // Deduplicate member IDs
+  const uniqueMemberIds = Array.from(new Set((members || []).map((m) => m.member_id)));
+  console.log('[getConnectedUsers] Found unique members:', uniqueMemberIds.length);
+  
+  if (uniqueMemberIds.length === 0) {
+    return [];
+  }
+
+  // Fetch profiles for those members separately
+  const { data: profiles, error: profileError } = await client
+    .from('profiles')
+    .select('user_id, display_name, email, avatar_url')
+    .in('user_id', uniqueMemberIds);
+
+  if (profileError) {
+    console.error('[getConnectedUsers] Error fetching profiles:', profileError);
+    throw profileError;
+  }
+
+  console.log('[getConnectedUsers] Fetched profiles:', profiles?.length || 0);
+
+  // Build connected users list
   const userMap = new Map<string, ConnectedUser>();
-  (members || []).forEach((m) => {
-    // Handle profile which could be an array or single object from the join
-    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-    if (profile && !userMap.has(m.member_id)) {
-      userMap.set(m.member_id, {
-        userId: m.member_id,
-        displayName: profile.display_name || profile.email || m.member_id.slice(0, 8),
-        email: profile.email,
-        avatarUrl: profile.avatar_url,
+  (profiles || []).forEach((p) => {
+    if (!userMap.has(p.user_id)) {
+      userMap.set(p.user_id, {
+        userId: p.user_id,
+        displayName: p.display_name || p.email || p.user_id.slice(0, 8),
+        email: p.email,
+        avatarUrl: p.avatar_url,
       });
     }
   });
 
-  return Array.from(userMap.values());
+  // Also include members without profiles (use member_id as display)
+  uniqueMemberIds.forEach((memberId) => {
+    if (!userMap.has(memberId)) {
+      userMap.set(memberId, {
+        userId: memberId,
+        displayName: memberId.slice(0, 8),
+        email: undefined,
+        avatarUrl: undefined,
+      });
+    }
+  });
+
+  const result = Array.from(userMap.values());
+  console.log('[getConnectedUsers] Returning connected users:', result.length);
+  return result;
 }
 
