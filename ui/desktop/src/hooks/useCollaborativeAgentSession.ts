@@ -240,12 +240,14 @@ export function useCollaborativeAgentSession(
     async (sessionId: string) => {
       if (!client) return;
 
+      console.log('[CollabSession] loadSessionData called for:', sessionId);
       setIsLoading(true);
       setError(null);
 
       try {
         // Load session
         const session = await getSessionById(client, sessionId);
+        console.log('[CollabSession] Loaded session:', session?.id, session?.title);
         if (!session) {
           throw new Error('Session not found');
         }
@@ -253,11 +255,13 @@ export function useCollaborativeAgentSession(
 
         // Load participants
         const parts = await getParticipants(client, sessionId);
+        console.log('[CollabSession] Loaded participants:', parts.length);
         setParticipants(parts);
 
         // Load initial messages
         setIsLoadingMessages(true);
         const msgs = await getMessages(client, sessionId);
+        console.log('[CollabSession] 📨 Loaded messages:', msgs.length, msgs.map(m => ({ type: m.message_type, content: m.content?.slice(0, 50) })));
         setMessages(msgs);
         if (msgs.length > 0) {
           setMessagesCursor(msgs[0].created_at);
@@ -266,7 +270,9 @@ export function useCollaborativeAgentSession(
 
         // Setup real-time subscriptions
         setupSubscriptions(sessionId);
+        console.log('[CollabSession] ✅ Session fully loaded');
       } catch (e) {
+        console.error('[CollabSession] ❌ loadSessionData error:', e);
         setError(getErrorMessage(e));
       } finally {
         setIsLoading(false);
@@ -467,17 +473,33 @@ export function useCollaborativeAgentSession(
   // Auto-connect to Goose session if provided
   // ==========================================================================
   useEffect(() => {
-    if (!client || !isEnabled || !gooseSessionId || !authSession?.user?.id) return;
+    if (!client || !isEnabled || !gooseSessionId || !authSession?.user?.id) {
+      console.log('[CollabSession] Auto-connect skipped:', {
+        hasClient: !!client,
+        isEnabled,
+        gooseSessionId,
+        hasUser: !!authSession?.user?.id,
+      });
+      return;
+    }
+
+    console.log('[CollabSession] 🔍 Auto-connecting to goose session:', gooseSessionId);
 
     // Check if there's an existing collaborative session for this Goose session
     (async () => {
       try {
         const existingSession = await getSessionByGooseId(client, gooseSessionId);
+        console.log('[CollabSession] Found collaborative session:', existingSession?.id, existingSession?.title);
+        
         if (existingSession) {
+          console.log('[CollabSession] 📥 Loading session data...');
           await loadSessionData(existingSession.id);
+          console.log('[CollabSession] ✅ Session data loaded');
+        } else {
+          console.log('[CollabSession] ⚠️ No collaborative session found for goose session:', gooseSessionId);
         }
       } catch (e) {
-        console.error('[CollabSession] Error checking for existing session:', e);
+        console.error('[CollabSession] ❌ Error checking for existing session:', e);
       }
     })();
   }, [client, isEnabled, gooseSessionId, authSession?.user?.id, loadSessionData]);
