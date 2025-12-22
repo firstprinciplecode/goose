@@ -20,7 +20,7 @@ interface EnhancedMentionPopoverProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectFile: (filePath: string) => void;
-  onInviteFriend: (friendUserId: string) => void;
+  onInviteFriend: (friendUserId: string, displayName?: string) => void;
   position: { x: number; y: number };
   query: string;
   selectedIndex: number;
@@ -215,12 +215,12 @@ const EnhancedMentionPopover = forwardRef<
       if (!item) return;
       
       if (item.type === 'connected-user' && item.userId) {
-        // Pass the full item.id which includes 'supabase:' prefix
-        console.log('🔗 Passing connected-user ID (keyboard):', item.id);
-        onInviteFriend(item.id);
+        // Pass the full item.id which includes 'supabase:' prefix, plus display name
+        console.log('🔗 Passing connected-user ID (keyboard):', item.id, 'displayName:', item.name);
+        onInviteFriend(item.id, item.name);
       } else if (item.type === 'goose-command' && item.userId) {
         // For goose commands, pass the command name (e.g., 'goose', 'goose off')
-        onInviteFriend(item.userId);
+        onInviteFriend(item.userId, item.name);
       } else if (item.type === 'file' && item.path) {
         onSelectFile(item.path);
       }
@@ -262,12 +262,12 @@ const EnhancedMentionPopover = forwardRef<
     if (!item) return;
     
     if (item.type === 'connected-user' && item.userId) {
-      // Pass the full item.id which includes 'supabase:' prefix
-      console.log('🔗 Passing connected-user ID:', item.id);
-      onInviteFriend(item.id);
+      // Pass the full item.id which includes 'supabase:' prefix, plus display name
+      console.log('🔗 Passing connected-user ID:', item.id, 'displayName:', item.name);
+      onInviteFriend(item.id, item.name);
     } else if (item.type === 'goose-command' && item.userId) {
       // For goose commands, pass the command name
-      onInviteFriend(item.userId);
+      onInviteFriend(item.userId, item.name);
     } else if (item.type === 'file' && item.path) {
       onSelectFile(item.path);
     }

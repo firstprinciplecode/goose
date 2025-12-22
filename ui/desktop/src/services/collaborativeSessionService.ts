@@ -209,7 +209,7 @@ export async function getParticipants(
     .from('session_participants')
     .select(`
       *,
-      profiles:user_id(display_name, email, avatar_url)
+      profiles:user_id(display_name, email)
     `)
     .eq('session_id', sessionId)
     .eq('is_active', true)
@@ -222,7 +222,6 @@ export async function getParticipants(
     ...p,
     display_name: p.profiles?.display_name,
     email: p.profiles?.email,
-    avatar_url: p.profiles?.avatar_url,
   }));
 }
 
@@ -429,32 +428,47 @@ export async function getPendingInvites(
   userId: string,
   email?: string
 ): Promise<SessionInvite[]> {
-  // Build OR filter: target_user_id = userId OR target_email = email
-  let query = client
+  // Build the filter - use proper and/or logic
+  const targetFilter = email 
+    ? `target_user_id.eq.${userId},target_email.ilike.${email.toLowerCase()}`
+    : `target_user_id.eq.${userId}`;
+
+  // Query invites with session join only (profiles join is complex due to FK)
+  const { data: invites, error } = await client
     .from('session_invites')
     .select(`
       *,
-      collaborative_sessions:session_id(title, goose_session_id),
-      inviter:invited_by(display_name, email)
+      collaborative_sessions:session_id(title, goose_session_id)
     `)
     .eq('status', 'pending')
-    .or(`target_user_id.eq.${userId}${email ? `,target_email.ilike.${email.toLowerCase()}` : ''}`);
-
-  // Only get non-expired invites
-  query = query.or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
-
-  const { data, error } = await query;
+    .or(targetFilter)
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
 
   if (error) throw error;
+  if (!invites || invites.length === 0) return [];
+
+  // Fetch inviter profiles separately
+  const inviterIds = [...new Set(invites.map((i) => i.invited_by))];
+  const { data: profiles } = await client
+    .from('profiles')
+    .select('user_id, display_name, email')
+    .in('user_id', inviterIds);
+
+  const profileMap = new Map(
+    (profiles || []).map((p) => [p.user_id, { display_name: p.display_name, email: p.email }])
+  );
 
   // Flatten joined data
-  return (data || []).map((invite) => ({
-    ...invite,
-    session_title: invite.collaborative_sessions?.title,
-    goose_session_id: invite.collaborative_sessions?.goose_session_id,
-    inviter_display_name: invite.inviter?.display_name,
-    inviter_email: invite.inviter?.email,
-  }));
+  return invites.map((invite) => {
+    const inviterProfile = profileMap.get(invite.invited_by);
+    return {
+      ...invite,
+      session_title: invite.collaborative_sessions?.title,
+      goose_session_id: invite.collaborative_sessions?.goose_session_id,
+      inviter_display_name: inviterProfile?.display_name,
+      inviter_email: inviterProfile?.email,
+    };
+  });
 }
 
 // =============================================================================
@@ -601,24 +615,30 @@ export function subscribeToIncomingInvites(
     },
     async (payload) => {
       console.log('[CollabSession] Received invite:', payload);
-      // Fetch full invite with joined data
+      // Fetch invite with session data
       const { data } = await client
         .from('session_invites')
         .select(`
           *,
-          collaborative_sessions:session_id(title, goose_session_id),
-          inviter:invited_by(display_name, email)
+          collaborative_sessions:session_id(title, goose_session_id)
         `)
         .eq('id', payload.new.id)
         .single();
 
       if (data) {
+        // Fetch inviter profile separately
+        const { data: inviterProfile } = await client
+          .from('profiles')
+          .select('display_name, email')
+          .eq('user_id', data.invited_by)
+          .single();
+
         onInvite({
           ...data,
           session_title: data.collaborative_sessions?.title,
           goose_session_id: data.collaborative_sessions?.goose_session_id,
-          inviter_display_name: data.inviter?.display_name,
-          inviter_email: data.inviter?.email,
+          inviter_display_name: inviterProfile?.display_name,
+          inviter_email: inviterProfile?.email,
         } as SessionInvite);
       }
     }

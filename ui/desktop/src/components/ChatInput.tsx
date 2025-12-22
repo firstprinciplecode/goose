@@ -1786,15 +1786,15 @@ export default function ChatInput({
     }, 0);
   };
 
-  const handleFriendInvite = async (friendUserId: string) => {
-    console.log('👥 handleFriendInvite called with:', friendUserId);
+  const handleFriendInvite = async (friendUserId: string, displayName?: string) => {
+    console.log('👥 handleFriendInvite called with:', friendUserId, 'displayName:', displayName);
     
     // Handle special cases for goose commands - these should NOT trigger invitations
     if (friendUserId.startsWith('goose')) {
       console.log('🦆 Handling @goose command:', friendUserId);
       
       // Replace the @ mention with the full goose command
-      const mentionText = `@${friendUserId}`;
+      const mentionText = `@${displayName || friendUserId}`;
       const beforeMention = displayValue.slice(0, mentionPopover.mentionStart);
       const afterMention = displayValue.slice(
         mentionPopover.mentionStart + 1 + mentionPopover.query.length
@@ -1848,8 +1848,8 @@ export default function ChatInput({
           console.log('✅ Sent collaboration invite to:', targetUserId);
         }
         
-        // Update UI with the mention
-        const mentionText = `@${mentionPopover.query || 'user'}`;
+        // Update UI with the mention - use the display name passed from the popover
+        const mentionText = `@${displayName || mentionPopover.query || 'user'}`;
         const beforeMention = displayValue.slice(0, mentionPopover.mentionStart);
         const afterMention = displayValue.slice(
           mentionPopover.mentionStart + 1 + mentionPopover.query.length
@@ -1869,7 +1869,7 @@ export default function ChatInput({
           }
         }, 0);
         
-        console.log('✅ Successfully invited connected user');
+        console.log('✅ Successfully invited connected user:', displayName);
       } catch (error) {
         console.error('❌ Failed to invite connected user:', error);
         toastError({
