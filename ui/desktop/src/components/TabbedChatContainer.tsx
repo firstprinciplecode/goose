@@ -12,7 +12,7 @@ import { Terminal } from 'lucide-react';
 
 // Import SVG icons
 import UnionIcon from '../assets/Union.svg';
-import BellIcon from '../assets/bell.svg';
+import { NotificationDropdown } from './NotificationDropdown';
 
 interface TabbedChatContainerProps {
   setIsGoosehintsModalOpen?: (isOpen: boolean) => void;
@@ -268,14 +268,9 @@ export const TabbedChatContainer: React.FC<TabbedChatContainerProps> = ({
             {/* Future: Add more top bar content here (search, breadcrumbs, etc.) */}
           </div>
           
-          {/* Notifications icon - top right corner, only visible on main chat view */}
+          {/* Notifications dropdown - top right corner, only visible on main chat view */}
           {isMainChatView && (
-            <button 
-              className="absolute right-2 top-[6px] z-[101] w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 dark:hover:bg-white/10 transition-colors"
-              title="Notifications"
-            >
-              <img src={BellIcon} alt="Notifications" className="w-6 h-6 opacity-60 hover:opacity-100 transition-opacity" />
-            </button>
+            <NotificationDropdown className="absolute right-2 top-[6px] z-[101]" />
           )}
         </div>
 
