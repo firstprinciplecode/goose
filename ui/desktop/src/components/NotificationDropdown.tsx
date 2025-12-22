@@ -91,13 +91,18 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         const invites = await getPendingInvites(client, user.id, user.email || undefined);
         console.log('[NotificationDropdown] Loaded invites:', invites.length, invites);
         
-        // Deduplicate by ID
-        const uniqueInvites = invites.filter(
+        // Deduplicate by ID first
+        const byId = invites.filter(
           (invite, index, self) => index === self.findIndex((i) => i.id === invite.id)
         );
         
+        // Also deduplicate by session_id (only show one invite per session)
+        const uniqueInvites = byId.filter(
+          (invite, index, self) => index === self.findIndex((i) => i.session_id === invite.session_id)
+        );
+        
         if (uniqueInvites.length !== invites.length) {
-          console.warn('[NotificationDropdown] Found duplicate invites, deduped from', invites.length, 'to', uniqueInvites.length);
+          console.warn('[NotificationDropdown] Deduped invites from', invites.length, 'to', uniqueInvites.length);
         }
         
         setPendingInvites(uniqueInvites);
@@ -109,21 +114,54 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     void loadInvites();
   }, [client, user, isEnabled]);
 
-  // Subscribe to incoming invites
+  // Poll for invites as a fallback (every 5 seconds)
+  useEffect(() => {
+    if (!client || !user || !isEnabled) return;
+
+    const pollInvites = async () => {
+      try {
+        const invites = await getPendingInvites(client, user.id, user.email || undefined);
+        setPendingInvites((prev) => {
+          // Merge with existing, avoiding duplicates by ID AND session_id
+          const existingIds = new Set(prev.map(p => p.id));
+          const existingSessionIds = new Set(prev.map(p => p.session_id));
+          const newInvites = invites.filter(i => 
+            !existingIds.has(i.id) && !existingSessionIds.has(i.session_id)
+          );
+          if (newInvites.length > 0) {
+            console.log('[NotificationDropdown] Poll found new invites:', newInvites.length);
+            return [...prev, ...newInvites];
+          }
+          return prev;
+        });
+      } catch (e) {
+        // Silently ignore poll errors
+      }
+    };
+
+    const pollInterval = setInterval(pollInvites, 5000);
+    return () => clearInterval(pollInterval);
+  }, [client, user, isEnabled]);
+
+  // Subscribe to incoming invites (realtime)
   useEffect(() => {
     if (!client || !user || !isEnabled) return;
 
     console.log('[NotificationDropdown] Subscribing to incoming invites for user:', user.id);
     const channel = subscribeToIncomingInvites(client, user.id, (invite) => {
-      console.log('[NotificationDropdown] Received new invite:', invite);
+      console.log('[NotificationDropdown] 🔔 REALTIME: Received new invite:', invite);
       setPendingInvites((prev) => {
-        // Avoid duplicates
-        if (prev.some((p) => p.id === invite.id)) return prev;
+        // Avoid duplicates by ID or session_id
+        if (prev.some((p) => p.id === invite.id || p.session_id === invite.session_id)) {
+          console.log('[NotificationDropdown] Skipping duplicate invite:', invite.id);
+          return prev;
+        }
         return [...prev, invite];
       });
     });
 
     return () => {
+      console.log('[NotificationDropdown] Unsubscribing from invites');
       client.removeChannel(channel);
     };
   }, [client, user, isEnabled]);
