@@ -208,23 +208,38 @@ export async function getParticipants(
   client: SupabaseClient,
   sessionId: string
 ): Promise<SessionParticipant[]> {
-  const { data, error } = await client
+  // Step 1: Get participants
+  const { data: participants, error: participantsError } = await client
     .from('session_participants')
-    .select(`
-      *,
-      profiles:user_id(display_name, email)
-    `)
+    .select('*')
     .eq('session_id', sessionId)
     .eq('is_active', true)
     .order('joined_at', { ascending: true });
 
-  if (error) throw error;
+  if (participantsError) throw participantsError;
+  if (!participants || participants.length === 0) return [];
 
-  // Flatten the joined profile data
-  return (data || []).map((p) => ({
+  // Step 2: Get profiles for all participant user_ids
+  const userIds = participants.map((p) => p.user_id);
+  const { data: profiles, error: profilesError } = await client
+    .from('profiles')
+    .select('user_id, display_name, email')
+    .in('user_id', userIds);
+
+  if (profilesError) {
+    console.warn('[getParticipants] Failed to load profiles:', profilesError.message);
+    // Continue without profiles
+  }
+
+  // Step 3: Merge profiles into participants
+  const profileMap = new Map(
+    (profiles || []).map((p) => [p.user_id, p])
+  );
+
+  return participants.map((p) => ({
     ...p,
-    display_name: p.profiles?.display_name,
-    email: p.profiles?.email,
+    display_name: profileMap.get(p.user_id)?.display_name,
+    email: profileMap.get(p.user_id)?.email,
   }));
 }
 
