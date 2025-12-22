@@ -7,8 +7,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
 import { useSupabase } from '../contexts/SupabaseContext';
+import { useTabContext } from '../contexts/TabContext';
 import {
   SessionInvite,
   acceptInvite,
@@ -50,8 +50,8 @@ interface NotificationDropdownProps {
 export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   className = '',
 }) => {
-  const navigate = useNavigate();
   const { client, user, isEnabled } = useSupabase();
+  const { openExistingSession } = useTabContext();
   const [isOpen, setIsOpen] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<SessionInvite[]>([]);
   const [processingInvites, setProcessingInvites] = useState<Set<string>>(new Set());
@@ -117,16 +117,21 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     setProcessingInvites((prev) => new Set(prev).add(invite.id));
 
     try {
-      const sessionId = await acceptInvite(client, invite.id);
-      console.log('[NotificationDropdown] Accepted invite, joining session:', sessionId);
+      const collabSessionId = await acceptInvite(client, invite.id);
+      console.log('[NotificationDropdown] Accepted invite, collab session:', collabSessionId);
+      console.log('[NotificationDropdown] Goose session ID:', invite.goose_session_id);
 
       // Remove from pending
       setPendingInvites((prev) => prev.filter((p) => p.id !== invite.id));
       setIsOpen(false);
 
-      // Navigate to the collaborative session
+      // Open the Goose session in a new tab
       if (invite.goose_session_id) {
-        navigate(`/pair?session=${invite.goose_session_id}&collab=${sessionId}`);
+        const sessionTitle = invite.session_title || `Collab: ${invite.goose_session_id.slice(0, 8)}`;
+        console.log('[NotificationDropdown] Opening session tab:', invite.goose_session_id, sessionTitle);
+        openExistingSession(invite.goose_session_id, sessionTitle);
+      } else {
+        console.warn('[NotificationDropdown] No goose_session_id in invite, cannot open tab');
       }
     } catch (e) {
       console.error('[NotificationDropdown] Failed to accept invite:', e);
@@ -137,7 +142,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         return next;
       });
     }
-  }, [client, processingInvites, navigate]);
+  }, [client, processingInvites, openExistingSession]);
 
   const handleDecline = useCallback(async (invite: SessionInvite) => {
     if (!client || processingInvites.has(invite.id)) return;
