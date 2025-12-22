@@ -1,20 +1,18 @@
 import { useState, useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import { FileIcon } from './FileIcon';
-import { Users } from 'lucide-react';
-import { useMatrix } from '../contexts/MatrixContext';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { getConnectedUsers, ConnectedUser } from '../services/collaborativeSessionService';
 import GooseIcon from '../images/loading-goose/1.svg';
 
 interface MentionItem {
   id: string;
-  type: 'file' | 'friend' | 'connected-user';
+  type: 'file' | 'goose-command' | 'connected-user';
   name: string;
   displayText: string;
   secondaryText?: string;
   path?: string; // For files
-  userId?: string; // For friends or connected users
+  userId?: string; // For connected users
   matchScore: number;
 }
 
@@ -72,7 +70,6 @@ const EnhancedMentionPopover = forwardRef<
   selectedIndex, 
   onSelectedIndexChange 
 }, ref) => {
-  const { friends, isConnected } = useMatrix();
   const { client: supabaseClient, session: supabaseSession, isEnabled: supabaseEnabled } = useSupabase();
   const [connectedUsers, setConnectedUsers] = useState<ConnectedUser[]>([]);
   const [recentFiles] = useState<string[]>([
@@ -149,7 +146,7 @@ const EnhancedMentionPopover = forwardRef<
       if (score > 0 || !query.trim()) {
         items.push({
           id: command,
-          type: 'friend', // Use friend type for consistent styling
+          type: 'goose-command',
           name: command,
           displayText: command,
           secondaryText: description,
@@ -159,7 +156,7 @@ const EnhancedMentionPopover = forwardRef<
       }
     });
 
-    // Add Supabase connected users (Team contacts) - prioritize these
+    // Add Supabase connected users (Team contacts)
     connectedUsers.forEach(user => {
       const displayName = user.displayName || user.email?.split('@')[0] || user.userId.slice(0, 8);
       const score = fuzzyMatch(query, displayName);
@@ -172,30 +169,10 @@ const EnhancedMentionPopover = forwardRef<
           displayText: displayName,
           secondaryText: user.email ? `Invite to collaborate • ${user.email}` : 'Invite to collaborate',
           userId: user.userId,
-          matchScore: score + 75, // Higher priority than Matrix friends
+          matchScore: score + 75,
         });
       }
     });
-    
-    // Add Matrix friends (if connected)
-    if (isConnected && friends.length > 0) {
-      friends.forEach(friend => {
-        const displayName = friend.displayName || friend.userId.split(':')[0].substring(1);
-        const score = fuzzyMatch(query, displayName);
-        
-        if (score > 0 || !query.trim()) {
-          items.push({
-            id: friend.userId,
-            type: 'friend',
-            name: displayName,
-            displayText: displayName,
-            secondaryText: `Invite to session • ${friend.userId}`,
-            userId: friend.userId,
-            matchScore: score + 50, // Boost friends in ranking
-          });
-        }
-      });
-    }
     
     // Add recent files
     recentFiles.forEach(filePath => {
@@ -221,13 +198,13 @@ const EnhancedMentionPopover = forwardRef<
       .sort((a, b) => {
         // Prioritize people when query is short
         if (query.length <= 2) {
-          if ((a.type === 'friend' || a.type === 'connected-user') && b.type === 'file') return -1;
-          if (a.type === 'file' && (b.type === 'friend' || b.type === 'connected-user')) return 1;
+          if (a.type === 'connected-user' && b.type === 'file') return -1;
+          if (a.type === 'file' && b.type === 'connected-user') return 1;
         }
         return b.matchScore - a.matchScore;
       })
       .slice(0, 8); // Show max 8 items
-  }, [friends, isConnected, connectedUsers, query, recentFiles]);
+  }, [connectedUsers, query, recentFiles]);
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
@@ -236,7 +213,10 @@ const EnhancedMentionPopover = forwardRef<
       const item = mentionItems[index];
       if (!item) return;
       
-      if ((item.type === 'friend' || item.type === 'connected-user') && item.userId) {
+      if (item.type === 'connected-user' && item.userId) {
+        onInviteFriend(item.userId);
+      } else if (item.type === 'goose-command' && item.userId) {
+        // For goose commands, treat as a mention insertion (handled elsewhere)
         onInviteFriend(item.userId);
       } else if (item.type === 'file' && item.path) {
         onSelectFile(item.path);
@@ -277,7 +257,7 @@ const EnhancedMentionPopover = forwardRef<
     const item = mentionItems[index];
     if (!item) return;
     
-    if ((item.type === 'friend' || item.type === 'connected-user') && item.userId) {
+    if ((item.type === 'connected-user' || item.type === 'goose-command') && item.userId) {
       onInviteFriend(item.userId);
     } else if (item.type === 'file' && item.path) {
       onSelectFile(item.path);
@@ -319,7 +299,7 @@ const EnhancedMentionPopover = forwardRef<
           <div className="p-4 text-center text-text-muted text-sm">
             {query ? (
               <>No matches for "{query}"</>
-            ) : connectedUsers.length > 0 || (isConnected && friends.length > 0) ? (
+            ) : connectedUsers.length > 0 ? (
               <>Type to search files or people</>
             ) : (
               <>Join a Team channel to invite people</>
@@ -329,7 +309,7 @@ const EnhancedMentionPopover = forwardRef<
           <>
             {/* Header */}
             <div className="text-xs font-medium text-text-muted mb-2 px-1">
-              {query ? `Results for "${query}"` : 'Recent files & friends'}
+              {query ? `Results for "${query}"` : 'Recent files & contacts'}
             </div>
             
             {/* Items */}
@@ -351,24 +331,18 @@ const EnhancedMentionPopover = forwardRef<
                       <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-xs font-medium">
                         {item.name.slice(0, 2).toUpperCase()}
                       </div>
-                    ) : item.type === 'friend' ? (
-                      item.userId?.startsWith('goose') ? (
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                          item.userId.includes('off') || item.userId.includes('stop') || item.userId.includes('quiet') 
-                            ? 'bg-gray-500' 
-                            : 'bg-green-500'
-                        }`}>
-                          <img 
-                            src={GooseIcon} 
-                            alt="Goose" 
-                            className="w-4 h-4 brightness-0 invert"
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                          <Users className="w-3 h-3 text-white" />
-                        </div>
-                      )
+                    ) : item.type === 'goose-command' ? (
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                        item.userId?.includes('off') || item.userId?.includes('stop') || item.userId?.includes('quiet') 
+                          ? 'bg-gray-500' 
+                          : 'bg-green-500'
+                      }`}>
+                        <img 
+                          src={GooseIcon} 
+                          alt="Goose" 
+                          className="w-4 h-4 brightness-0 invert"
+                        />
+                      </div>
                     ) : (
                       <div className="w-6 h-6 flex items-center justify-center">
                         <FileIcon fileName={item.name} isDirectory={false} />
@@ -391,15 +365,15 @@ const EnhancedMentionPopover = forwardRef<
                   </div>
                   
                   {/* Action hint */}
-                  {item.type === 'friend' && (
+                  {(item.type === 'goose-command' || item.type === 'connected-user') && (
                     <div className={`text-xs px-2 py-1 rounded ${
                       index === selectedIndex 
                         ? 'bg-text-on-accent/20 text-text-on-accent' 
-                        : item.userId?.startsWith('goose')
+                        : item.type === 'goose-command'
                           ? 'bg-green-100 text-green-600' 
-                          : 'bg-blue-100 text-blue-600'
+                          : 'bg-purple-100 text-purple-600'
                     }`}>
-                      {item.userId?.startsWith('goose') ? 'Mention' : 'Invite'}
+                      {item.type === 'goose-command' ? 'Mention' : 'Invite'}
                     </div>
                   )}
                 </div>

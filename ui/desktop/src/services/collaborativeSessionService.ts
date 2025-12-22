@@ -739,10 +739,10 @@ export async function getConnectedUsers(
     return [];
   }
 
-  // Fetch profiles for those members separately
+  // Fetch profiles for those members separately (avatar_url may not exist in older schemas)
   const { data: profiles, error: profileError } = await client
     .from('profiles')
-    .select('user_id, display_name, email, avatar_url')
+    .select('user_id, display_name, email')
     .in('user_id', uniqueMemberIds);
 
   if (profileError) {
@@ -760,7 +760,6 @@ export async function getConnectedUsers(
         userId: p.user_id,
         displayName: p.display_name || p.email || p.user_id.slice(0, 8),
         email: p.email,
-        avatarUrl: p.avatar_url,
       });
     }
   });
