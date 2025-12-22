@@ -14,6 +14,8 @@ import { useIsMobile } from '../hooks/use-mobile';
 import { cn } from '../utils';
 import { useChatStream } from '../hooks/useChatStream';
 import { useNavigation } from '../hooks/useNavigation';
+import { useCollaborativeAgentSession } from '../hooks/useCollaborativeAgentSession';
+import { SessionHumanMessage } from '../services/collaborativeSessionService';
 import { RecipeHeader } from './RecipeHeader';
 import { RecipeWarningModal } from './ui/RecipeWarningModal';
 import { scanRecipe } from '../recipe';
@@ -109,6 +111,63 @@ function BaseChatContent({
     tabId, // Pass tabId for sidecar filtering
     matrixRoomId, // Pass Matrix room ID for loading historical messages
   });
+
+  // Collaborative session integration
+  const collab = useCollaborativeAgentSession(sessionId);
+
+  // Convert Supabase collaborative messages to the local Message format
+  const convertCollabMessage = useCallback((msg: SessionHumanMessage): Message => {
+    const isAssistant = msg.message_type === 'assistant';
+    const senderLabel = msg.user_display_name || msg.user_email || 'Collaborator';
+    
+    // For user messages from collaborators, prefix with their name
+    const displayContent = isAssistant 
+      ? msg.content 
+      : `[${senderLabel}] ${msg.content}`;
+    
+    return {
+      id: msg.id,
+      role: isAssistant ? 'assistant' : 'user',
+      created: msg.created_at,
+      content: [{
+        type: 'text',
+        text: displayContent,
+      }],
+    } as Message;
+  }, []);
+
+  // Merge local and collaborative messages
+  const mergedMessages = useMemo(() => {
+    // If not in a collaborative session or no collaborative messages, use local messages
+    if (!collab.state.isCollaborative || collab.state.messages.length === 0) {
+      return messages;
+    }
+
+    // Create a set of local message IDs for deduplication
+    const localIds = new Set(messages.map(m => m.id));
+    
+    // Convert and filter collaborative messages (avoid duplicates)
+    const collabConverted = collab.state.messages
+      .filter(cm => !localIds.has(cm.id) && !localIds.has(cm.local_message_id || ''))
+      .map(convertCollabMessage);
+
+    // Merge and sort by timestamp
+    const allMessages = [...messages, ...collabConverted];
+    allMessages.sort((a, b) => {
+      const aTime = new Date(a.created || 0).getTime();
+      const bTime = new Date(b.created || 0).getTime();
+      return aTime - bTime;
+    });
+
+    console.log('[BaseChat2] Merged messages:', {
+      local: messages.length,
+      collab: collabConverted.length,
+      total: allMessages.length,
+      isCollaborative: collab.state.isCollaborative,
+    });
+
+    return allMessages;
+  }, [messages, collab.state.isCollaborative, collab.state.messages, convertCollabMessage]);
 
   // Auto-send @goose off for Matrix chats on initial load
   const hasAutoDisabledGoose = useRef(false);
@@ -224,31 +283,31 @@ function BaseChatContent({
     }
   };
 
-  const previousMessageCountRef = useRef(messages.length);
+  const previousMessageCountRef = useRef(mergedMessages.length);
   const hasInitialScrollRef = useRef(false);
 
   // Auto-scroll only when new messages arrive or we're still streaming
   const handleRenderingComplete = React.useCallback(() => {
-    const hasNewMessage = messages.length > previousMessageCountRef.current;
+    const hasNewMessage = mergedMessages.length > previousMessageCountRef.current;
 
     if (hasNewMessage && scrollRef.current?.scrollToBottom) {
       console.log('📜 BaseChat2: SCROLLING TO BOTTOM (new message detected)');
       scrollRef.current.scrollToBottom();
     }
 
-    previousMessageCountRef.current = messages.length;
-  }, [messages.length]);
+    previousMessageCountRef.current = mergedMessages.length;
+  }, [mergedMessages.length]);
 
   // Scroll to bottom once when entering a conversation that already has history
   useEffect(() => {
-    if (!hasInitialScrollRef.current && messages.length > 0 && scrollRef.current?.scrollToBottom) {
+    if (!hasInitialScrollRef.current && mergedMessages.length > 0 && scrollRef.current?.scrollToBottom) {
       hasInitialScrollRef.current = true;
       requestAnimationFrame(() => {
         console.log('📜 BaseChat2: Initial conversation scroll');
         scrollRef.current?.scrollToBottom();
       });
     }
-  }, [messages.length]);
+  }, [mergedMessages.length]);
 
   useEffect(() => {
     hasInitialScrollRef.current = false;
@@ -273,13 +332,16 @@ function BaseChatContent({
 
   // Use the showPopularTopics prop, but also check the current state
   const shouldShowPopularTopics = showPopularTopics && 
-    messages.length === 0 && !initialMessage && chatState === ChatState.Idle;
+    mergedMessages.length === 0 && !initialMessage && chatState === ChatState.Idle;
 
   // Debug logging for empty state
   console.log('BaseChat2 render state:', {
     sessionId: sessionId, // Show full session ID for debugging
     sessionIdShort: sessionId.slice(0, 8), // Also show truncated for readability
-    messagesLength: messages.length,
+    messagesLength: mergedMessages.length,
+    localMessagesLength: messages.length,
+    collabMessagesLength: collab.state.messages.length,
+    isCollaborative: collab.state.isCollaborative,
     chatState,
     shouldShowPopularTopics,
     loadingChat,
@@ -291,12 +353,12 @@ function BaseChatContent({
   // Memoize the chat object to prevent infinite re-renders
   const chat: ChatType = useMemo(() => ({
     messageHistoryIndex: 0,
-    messages: messages as any,
+    messages: mergedMessages as any,
     recipe,
     sessionId: session?.id || sessionId, // Use actual session ID if available
     name: (session as any)?.name || 'No Session',
-    title: session?.description || (messages.length > 0 ? 'Chat' : 'New Chat'),
-  }), [messages, recipe, session?.id, sessionId, session?.description]);
+    title: session?.description || (mergedMessages.length > 0 ? 'Chat' : 'New Chat'),
+  }), [mergedMessages, recipe, session?.id, sessionId, session?.description]);
 
   // Update parent only when session ID or title changes (to avoid infinite loops)
   // Only call setChat if it's provided (active tabs)
@@ -306,7 +368,7 @@ function BaseChatContent({
     }
   }, [setChat, chat.sessionId, chat.title]);
 
-  const initialPrompt = messages.length == 0 && recipe?.prompt ? recipe.prompt : '';
+  const initialPrompt = mergedMessages.length == 0 && recipe?.prompt ? recipe.prompt : '';
 
   return (
     <div className="h-full flex flex-col min-h-0 relative">
@@ -383,7 +445,7 @@ function BaseChatContent({
                   {disableSearch ? (
                     // Render messages without SearchView wrapper when search is disabled
                     <ProgressiveMessageList
-                      messages={messages as any}
+                      messages={mergedMessages as any}
                       chat={chat}
                       toolCallNotifications={toolCallNotifications}
                       append={append}
@@ -415,7 +477,7 @@ function BaseChatContent({
                     // Render messages with SearchView wrapper when search is enabled
                     <SearchView>
                       <ProgressiveMessageList
-                        messages={messages as any}
+                        messages={mergedMessages as any}
                         chat={chat}
                         toolCallNotifications={toolCallNotifications}
                         append={append}
