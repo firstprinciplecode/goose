@@ -76,14 +76,31 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
 
   // Load pending invites on mount
   useEffect(() => {
-    if (!client || !user || !isEnabled) return;
+    if (!client || !user || !isEnabled) {
+      console.log('[NotificationDropdown] Not loading invites - missing:', { 
+        hasClient: !!client, 
+        hasUser: !!user, 
+        isEnabled 
+      });
+      return;
+    }
 
     const loadInvites = async () => {
       try {
-        console.log('[NotificationDropdown] Loading pending invites for user:', user.id);
+        console.log('[NotificationDropdown] Loading pending invites for user:', user.id, 'email:', user.email);
         const invites = await getPendingInvites(client, user.id, user.email || undefined);
-        console.log('[NotificationDropdown] Loaded invites:', invites.length);
-        setPendingInvites(invites);
+        console.log('[NotificationDropdown] Loaded invites:', invites.length, invites);
+        
+        // Deduplicate by ID
+        const uniqueInvites = invites.filter(
+          (invite, index, self) => index === self.findIndex((i) => i.id === invite.id)
+        );
+        
+        if (uniqueInvites.length !== invites.length) {
+          console.warn('[NotificationDropdown] Found duplicate invites, deduped from', invites.length, 'to', uniqueInvites.length);
+        }
+        
+        setPendingInvites(uniqueInvites);
       } catch (e) {
         console.error('[NotificationDropdown] Failed to load pending invites:', e);
       }
@@ -112,13 +129,24 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   }, [client, user, isEnabled]);
 
   const handleAccept = useCallback(async (invite: SessionInvite) => {
-    if (!client || processingInvites.has(invite.id)) return;
+    console.log('[NotificationDropdown] Accept clicked for invite:', invite.id);
+    
+    if (!client) {
+      console.error('[NotificationDropdown] No Supabase client');
+      return;
+    }
+    
+    if (processingInvites.has(invite.id)) {
+      console.log('[NotificationDropdown] Already processing this invite');
+      return;
+    }
 
     setProcessingInvites((prev) => new Set(prev).add(invite.id));
 
     try {
+      console.log('[NotificationDropdown] Calling acceptInvite RPC...');
       const collabSessionId = await acceptInvite(client, invite.id);
-      console.log('[NotificationDropdown] Accepted invite, collab session:', collabSessionId);
+      console.log('[NotificationDropdown] ✅ Accepted invite, collab session:', collabSessionId);
       console.log('[NotificationDropdown] Goose session ID:', invite.goose_session_id);
 
       // Remove from pending
@@ -132,9 +160,13 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         openExistingSession(invite.goose_session_id, sessionTitle);
       } else {
         console.warn('[NotificationDropdown] No goose_session_id in invite, cannot open tab');
+        // Still mark as accepted - the invite was processed
+        alert('Invite accepted, but could not open session tab. The goose_session_id is missing.');
       }
-    } catch (e) {
-      console.error('[NotificationDropdown] Failed to accept invite:', e);
+    } catch (e: any) {
+      console.error('[NotificationDropdown] ❌ Failed to accept invite:', e);
+      console.error('[NotificationDropdown] Error details:', e?.message, e?.code, e?.details);
+      alert(`Failed to accept invite: ${e?.message || 'Unknown error'}`);
     } finally {
       setProcessingInvites((prev) => {
         const next = new Set(prev);
