@@ -1,18 +1,20 @@
-import React, { useState, useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import { FileIcon } from './FileIcon';
-import { Users, UserPlus, File } from 'lucide-react';
+import { Users } from 'lucide-react';
 import { useMatrix } from '../contexts/MatrixContext';
+import { useSupabase } from '../contexts/SupabaseContext';
+import { getConnectedUsers, ConnectedUser } from '../services/collaborativeSessionService';
 import GooseIcon from '../images/loading-goose/1.svg';
 
 interface MentionItem {
   id: string;
-  type: 'file' | 'friend';
+  type: 'file' | 'friend' | 'connected-user';
   name: string;
   displayText: string;
   secondaryText?: string;
   path?: string; // For files
-  userId?: string; // For friends
+  userId?: string; // For friends or connected users
   matchScore: number;
 }
 
@@ -71,6 +73,8 @@ const EnhancedMentionPopover = forwardRef<
   onSelectedIndexChange 
 }, ref) => {
   const { friends, isConnected } = useMatrix();
+  const { client: supabaseClient, session: supabaseSession, isEnabled: supabaseEnabled } = useSupabase();
+  const [connectedUsers, setConnectedUsers] = useState<ConnectedUser[]>([]);
   const [recentFiles] = useState<string[]>([
     'README.md',
     'package.json',
@@ -82,7 +86,24 @@ const EnhancedMentionPopover = forwardRef<
   const popoverRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Combine friends, goose, and files into mention items
+  // Fetch connected users from Supabase (people who share Team channels)
+  useEffect(() => {
+    if (!isOpen || !supabaseClient || !supabaseSession?.user?.id || !supabaseEnabled) return;
+    
+    const fetchConnectedUsers = async () => {
+      try {
+        const users = await getConnectedUsers(supabaseClient, supabaseSession.user.id);
+        console.log('[Mention] Loaded connected users:', users.length);
+        setConnectedUsers(users);
+      } catch (e) {
+        console.error('[Mention] Failed to load connected users:', e);
+      }
+    };
+    
+    void fetchConnectedUsers();
+  }, [isOpen, supabaseClient, supabaseSession?.user?.id, supabaseEnabled]);
+
+  // Combine friends, goose, connected users, and files into mention items
   const mentionItems = useMemo((): MentionItem[] => {
     const items: MentionItem[] = [];
     
@@ -110,7 +131,7 @@ const EnhancedMentionPopover = forwardRef<
       }
     ];
 
-    gooseCommands.forEach(({ command, description, emoji }) => {
+    gooseCommands.forEach(({ command, description }) => {
       const score = fuzzyMatch(query, command);
       if (score > 0 || !query.trim()) {
         items.push({
@@ -124,8 +145,26 @@ const EnhancedMentionPopover = forwardRef<
         });
       }
     });
+
+    // Add Supabase connected users (Team contacts) - prioritize these
+    connectedUsers.forEach(user => {
+      const displayName = user.displayName || user.email?.split('@')[0] || user.userId.slice(0, 8);
+      const score = fuzzyMatch(query, displayName);
+      
+      if (score > 0 || !query.trim()) {
+        items.push({
+          id: `supabase:${user.userId}`,
+          type: 'connected-user',
+          name: displayName,
+          displayText: displayName,
+          secondaryText: user.email ? `Invite to collaborate • ${user.email}` : 'Invite to collaborate',
+          userId: user.userId,
+          matchScore: score + 75, // Higher priority than Matrix friends
+        });
+      }
+    });
     
-    // Add friends (prioritize if connected)
+    // Add Matrix friends (if connected)
     if (isConnected && friends.length > 0) {
       friends.forEach(friend => {
         const displayName = friend.displayName || friend.userId.split(':')[0].substring(1);
@@ -167,15 +206,15 @@ const EnhancedMentionPopover = forwardRef<
     return items
       .filter(item => item.matchScore >= 0)
       .sort((a, b) => {
-        // Prioritize friends when query is short
+        // Prioritize people when query is short
         if (query.length <= 2) {
-          if (a.type === 'friend' && b.type === 'file') return -1;
-          if (a.type === 'file' && b.type === 'friend') return 1;
+          if ((a.type === 'friend' || a.type === 'connected-user') && b.type === 'file') return -1;
+          if (a.type === 'file' && (b.type === 'friend' || b.type === 'connected-user')) return 1;
         }
         return b.matchScore - a.matchScore;
       })
       .slice(0, 8); // Show max 8 items
-  }, [friends, isConnected, query, recentFiles]);
+  }, [friends, isConnected, connectedUsers, query, recentFiles]);
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
@@ -184,7 +223,7 @@ const EnhancedMentionPopover = forwardRef<
       const item = mentionItems[index];
       if (!item) return;
       
-      if (item.type === 'friend' && item.userId) {
+      if ((item.type === 'friend' || item.type === 'connected-user') && item.userId) {
         onInviteFriend(item.userId);
       } else if (item.type === 'file' && item.path) {
         onSelectFile(item.path);
@@ -225,7 +264,7 @@ const EnhancedMentionPopover = forwardRef<
     const item = mentionItems[index];
     if (!item) return;
     
-    if (item.type === 'friend' && item.userId) {
+    if ((item.type === 'friend' || item.type === 'connected-user') && item.userId) {
       onInviteFriend(item.userId);
     } else if (item.type === 'file' && item.path) {
       onSelectFile(item.path);
@@ -264,10 +303,10 @@ const EnhancedMentionPopover = forwardRef<
           <div className="p-4 text-center text-text-muted text-sm">
             {query ? (
               <>No matches for "{query}"</>
-            ) : isConnected ? (
-              <>Type to search files or friends</>
+            ) : connectedUsers.length > 0 || (isConnected && friends.length > 0) ? (
+              <>Type to search files or people</>
             ) : (
-              <>Connect to Matrix to invite friends</>
+              <>Join a Team channel to invite people</>
             )}
           </div>
         ) : (
@@ -291,7 +330,12 @@ const EnhancedMentionPopover = forwardRef<
                 >
                   {/* Icon */}
                   <div className="flex-shrink-0">
-                    {item.type === 'friend' ? (
+                    {item.type === 'connected-user' ? (
+                      // Supabase connected user - purple gradient avatar
+                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-xs font-medium">
+                        {item.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    ) : item.type === 'friend' ? (
                       item.userId?.startsWith('goose') ? (
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
                           item.userId.includes('off') || item.userId.includes('stop') || item.userId.includes('quiet') 

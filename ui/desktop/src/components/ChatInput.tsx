@@ -41,6 +41,12 @@ import EnhancedMentionPopover from './EnhancedMentionPopover';
 import { useMatrix } from '../contexts/MatrixContext';
 import { sessionMappingService } from '../services/SessionMappingService';
 import { useTabContext } from '../contexts/TabContext';
+import { useSupabase } from '../contexts/SupabaseContext';
+import { 
+  createCollaborativeSession, 
+  getSessionByGooseId,
+  inviteUser as inviteSupabaseUser 
+} from '../services/collaborativeSessionService';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -557,6 +563,9 @@ export default function ChatInput({
   
   // Get Matrix context for current user information and sending functionality
   const { currentUser, sendMessage } = useMatrix();
+  
+  // Get Supabase context for connected user invitations
+  const { client: supabaseClient, session: supabaseSession, isEnabled: supabaseEnabled } = useSupabase();
   
   // Session sharing hook - HYBRID: always use backend session ID, pass Matrix room ID separately
   const sessionSharing = useSessionSharing({
@@ -1921,7 +1930,7 @@ export default function ChatInput({
   const handleFriendInvite = async (friendUserId: string) => {
     console.log('👥 handleFriendInvite called with:', friendUserId);
     
-    // Handle special cases for goose commands - these should NOT trigger Matrix invitations
+    // Handle special cases for goose commands - these should NOT trigger invitations
     if (friendUserId.startsWith('goose')) {
       console.log('🦆 Handling @goose command:', friendUserId);
       
@@ -1950,9 +1959,70 @@ export default function ChatInput({
       console.log('✅ Successfully added @goose command:', friendUserId);
       return;
     }
+
+    // Handle Supabase connected users (prefixed with 'supabase:')
+    if (friendUserId.startsWith('supabase:')) {
+      const targetUserId = friendUserId.replace('supabase:', '');
+      console.log('🔗 Handling Supabase connected user invite:', targetUserId);
+      
+      try {
+        if (!supabaseClient || !supabaseSession?.user?.id || !supabaseEnabled) {
+          throw new Error('Supabase not configured');
+        }
+        
+        // Get or create a collaborative session for this Goose session
+        let collabSession = sessionId ? await getSessionByGooseId(supabaseClient, sessionId) : null;
+        
+        if (!collabSession && sessionId) {
+          // Create a new collaborative session
+          collabSession = await createCollaborativeSession(supabaseClient, supabaseSession.user.id, {
+            gooseSessionId: sessionId,
+            title: `Session ${sessionId.slice(0, 8)}`,
+            collaborativeMode: true,
+          });
+          console.log('📝 Created collaborative session:', collabSession.id);
+        }
+        
+        if (collabSession) {
+          // Send direct invite to the connected user
+          await inviteSupabaseUser(supabaseClient, collabSession.id, supabaseSession.user.id, targetUserId);
+          console.log('✅ Sent collaboration invite to:', targetUserId);
+        }
+        
+        // Update UI with the mention
+        const mentionText = `@${mentionPopover.query || 'user'}`;
+        const beforeMention = displayValue.slice(0, mentionPopover.mentionStart);
+        const afterMention = displayValue.slice(
+          mentionPopover.mentionStart + 1 + mentionPopover.query.length
+        );
+        const newValue = `${beforeMention}${mentionText} ${afterMention}`;
+
+        setDisplayValue(newValue);
+        setValue(newValue);
+        setMentionPopover((prev) => ({ ...prev, isOpen: false }));
+        textAreaRef.current?.focus();
+
+        const newCursorPosition = beforeMention.length + mentionText.length + 1;
+        setTimeout(() => {
+          if (textAreaRef.current) {
+            textAreaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
+            textAreaRef.current.focus();
+          }
+        }, 0);
+        
+        console.log('✅ Successfully invited connected user');
+      } catch (error) {
+        console.error('❌ Failed to invite connected user:', error);
+        toastError({
+          title: 'Invitation Failed',
+          msg: error instanceof Error ? error.message : 'Failed to invite user to session',
+        });
+      }
+      return;
+    }
     
     try {
-      // Only attempt Matrix invitation for actual user IDs (not goose commands)
+      // Matrix invitation for Matrix user IDs
       await sessionSharing.inviteToSession(friendUserId);
       
       // Replace the @ mention with a friend mention format
@@ -1982,8 +2052,6 @@ export default function ChatInput({
       console.log('✅ Successfully invited friend and updated UI');
     } catch (error) {
       console.error('❌ Failed to invite friend:', error);
-      // Keep the popover open so user can try again
-      // You might want to show a toast notification here
       toastError({
         title: 'Invitation Failed',
         msg: error instanceof Error ? error.message : 'Failed to invite friend to session',
