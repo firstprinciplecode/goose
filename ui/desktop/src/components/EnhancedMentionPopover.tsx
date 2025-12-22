@@ -214,9 +214,10 @@ const EnhancedMentionPopover = forwardRef<
       if (!item) return;
       
       if (item.type === 'connected-user' && item.userId) {
-        onInviteFriend(item.userId);
+        // Pass the full item.id which includes 'supabase:' prefix
+        onInviteFriend(item.id);
       } else if (item.type === 'goose-command' && item.userId) {
-        // For goose commands, treat as a mention insertion (handled elsewhere)
+        // For goose commands, pass the command name (e.g., 'goose', 'goose off')
         onInviteFriend(item.userId);
       } else if (item.type === 'file' && item.path) {
         onSelectFile(item.path);
@@ -257,7 +258,11 @@ const EnhancedMentionPopover = forwardRef<
     const item = mentionItems[index];
     if (!item) return;
     
-    if ((item.type === 'connected-user' || item.type === 'goose-command') && item.userId) {
+    if (item.type === 'connected-user' && item.userId) {
+      // Pass the full item.id which includes 'supabase:' prefix
+      onInviteFriend(item.id);
+    } else if (item.type === 'goose-command' && item.userId) {
+      // For goose commands, pass the command name
       onInviteFriend(item.userId);
     } else if (item.type === 'file' && item.path) {
       onSelectFile(item.path);
