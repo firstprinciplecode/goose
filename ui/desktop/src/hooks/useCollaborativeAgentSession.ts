@@ -246,6 +246,7 @@ export function useCollaborativeAgentSession(
 
       try {
         // Load session
+        console.log('[CollabSession] Step 1: Loading session by ID...');
         const session = await getSessionById(client, sessionId);
         console.log('[CollabSession] Loaded session:', session?.id, session?.title);
         if (!session) {
@@ -254,14 +255,28 @@ export function useCollaborativeAgentSession(
         setCollabSession(session);
 
         // Load participants
-        const parts = await getParticipants(client, sessionId);
-        console.log('[CollabSession] Loaded participants:', parts.length);
+        console.log('[CollabSession] Step 2: Loading participants...');
+        let parts: any[] = [];
+        try {
+          parts = await getParticipants(client, sessionId);
+          console.log('[CollabSession] Loaded participants:', parts.length);
+        } catch (partErr: any) {
+          console.error('[CollabSession] ⚠️ Failed to load participants:', partErr?.message || partErr);
+          // Continue anyway - participants not critical
+        }
         setParticipants(parts);
 
         // Load initial messages
+        console.log('[CollabSession] Step 3: Loading messages...');
         setIsLoadingMessages(true);
-        const msgs = await getMessages(client, sessionId);
-        console.log('[CollabSession] 📨 Loaded messages:', msgs.length, msgs.map(m => ({ type: m.message_type, content: m.content?.slice(0, 50) })));
+        let msgs: any[] = [];
+        try {
+          msgs = await getMessages(client, sessionId);
+          console.log('[CollabSession] 📨 Loaded messages:', msgs.length, msgs.map(m => ({ type: m.message_type, content: m.content?.slice(0, 50) })));
+        } catch (msgErr: any) {
+          console.error('[CollabSession] ⚠️ Failed to load messages:', msgErr?.message || msgErr);
+          // Continue anyway
+        }
         setMessages(msgs);
         if (msgs.length > 0) {
           setMessagesCursor(msgs[0].created_at);
@@ -269,10 +284,17 @@ export function useCollaborativeAgentSession(
         setIsLoadingMessages(false);
 
         // Setup real-time subscriptions
+        console.log('[CollabSession] Step 4: Setting up subscriptions...');
         setupSubscriptions(sessionId);
         console.log('[CollabSession] ✅ Session fully loaded');
-      } catch (e) {
+      } catch (e: any) {
         console.error('[CollabSession] ❌ loadSessionData error:', e);
+        console.error('[CollabSession] Error details:', {
+          message: e?.message,
+          code: e?.code,
+          details: e?.details,
+          hint: e?.hint,
+        });
         setError(getErrorMessage(e));
       } finally {
         setIsLoading(false);
