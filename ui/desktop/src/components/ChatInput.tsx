@@ -35,13 +35,10 @@ import { getApiUrl } from '../config';
 import { useCustomCommands } from '../hooks/useCustomCommands';
 import { AddCustomCommandModal } from './AddCustomCommandModal';
 import { CustomCommand, BUILT_IN_COMMANDS } from '../types/customCommands';
-import { useSessionSharing } from '../hooks/useSessionSharing';
-import SessionSharing from './collaborative/SessionSharing';
 import EnhancedMentionPopover from './EnhancedMentionPopover';
-import { useMatrix } from '../contexts/MatrixContext';
-import { sessionMappingService } from '../services/SessionMappingService';
-import { useTabContext } from '../contexts/TabContext';
 import { useSupabase } from '../contexts/SupabaseContext';
+import { useCollaborativeAgentSession } from '../hooks/useCollaborativeAgentSession';
+import { useTabContext } from '../contexts/TabContext';
 import { 
   createCollaborativeSession, 
   getSessionByGooseId,
@@ -490,184 +487,52 @@ export default function ChatInput({
     
     textAreaRef.current?.focus();
   };
-  const tabContext = useTabContext();
-  
-  // Get Matrix room info from TabContext (primary source)
-  let tabMatrixRoomId: string | undefined = undefined;
-  let tabMatrixRecipientId: string | undefined = undefined;
-  let isExplicitMatrixTab = false;
-  
-  if (tabContext) {
-    try {
-      const activeTabState = tabContext.getActiveTabState();
-      if (activeTabState?.tab.type === 'matrix') {
-        tabMatrixRoomId = activeTabState.tab.matrixRoomId || undefined;
-        tabMatrixRecipientId = activeTabState.tab.matrixRecipientId || undefined;
-        isExplicitMatrixTab = true;
-      }
-    } catch (error) {
-      console.debug('TabContext not available for Matrix detection');
-    }
-  }
-  
-  // STRICT TAB-CENTRIC Matrix detection: ONLY rely on tab context, not backend mapping
-  const isNewSession = sessionId?.startsWith('new_') || false;
-  const hasTabMatrixRoom = !!(tabMatrixRoomId && tabMatrixRoomId.startsWith('!'));
-  
-  // Matrix room detection: ONLY explicit Matrix tab properties (no backend fallback)
-  const isMatrixRoom = isExplicitMatrixTab && hasTabMatrixRoom;
-  
-  // Get the actual Matrix room ID for useSessionSharing - ONLY for explicit Matrix tabs
-  let actualMatrixRoomId: string | undefined = undefined;
-  if (isExplicitMatrixTab && tabMatrixRoomId) {
-    // CRITICAL: Only set Matrix room ID if this is explicitly a Matrix tab
-    // This prevents solo tabs from accidentally getting Matrix room IDs
-    actualMatrixRoomId = tabMatrixRoomId;
-  }
-  
-  console.log('🔍 ChatInput Matrix room detection (STRICT TAB-CENTRIC):', {
-    sessionId,
-    isNewSession,
-    tabMatrixRoomId,
-    tabMatrixRecipientId,
-    isExplicitMatrixTab,
-    hasTabMatrixRoom,
-    isMatrixRoom,
-    actualMatrixRoomId,
-    tabContextAvailable: !!tabContext,
-    detectionMethod: isMatrixRoom ? 'TabContext-Explicit-Only' : 'None',
-    // Additional debugging for useSessionSharing
-    willPassToUseSessionSharing: {
-      sessionId: sessionId, // Always use actual backend session ID
-      initialRoomId: actualMatrixRoomId, // Matrix room ID for Matrix operations (only from tab)
-      isMatrixMode: isMatrixRoom
-    }
-  });
-  
-  // CRITICAL DEBUG: Log what we're actually passing to useSessionSharing
-  console.log('🚨 ChatInput: About to call useSessionSharing with:', {
-    sessionId: sessionId,
-    initialRoomId: actualMatrixRoomId,
-    isMatrixRoom: isMatrixRoom,
-    shouldSetupMatrixListeners: !!actualMatrixRoomId,
-    timestamp: new Date().toISOString()
-  });
 
   const agentIsReady = useMemo(() => {
-    // Always allow input for Matrix chats or when Goose has been explicitly disabled
-    if (!gooseEnabled || isMatrixRoom) {
+    // Always allow input when Goose has been explicitly disabled
+    if (!gooseEnabled) {
       return true;
     }
     return chatContext === null || chatContext.agentWaitingMessage === null;
-  }, [chatContext, gooseEnabled, isMatrixRoom]);
-  
-  // Get Matrix context for current user information and sending functionality
-  const { currentUser, sendMessage } = useMatrix();
-  
-  // Get Supabase context for connected user invitations
+  }, [chatContext, gooseEnabled]);
+
+  // Supabase auth for collaboration
   const { client: supabaseClient, session: supabaseSession, isEnabled: supabaseEnabled } = useSupabase();
-  
-  // Session sharing hook - HYBRID: always use backend session ID, pass Matrix room ID separately
-  const sessionSharing = useSessionSharing({
-    sessionId: sessionId, // Always use actual backend session ID for API calls
-    sessionTitle: isMatrixRoom && actualMatrixRoomId ? `Matrix Room ${actualMatrixRoomId.substring(0, 8)}` : `Chat Session ${sessionId?.substring(0, 8) || 'default'}`,
-    messages: messages, // Always sync messages
-    // CRITICAL FIX: Only provide onMessageSync callback for Matrix tabs
-    // This prevents non-Matrix tabs from receiving Matrix messages through the append function
-    onMessageSync: isMatrixRoom && actualMatrixRoomId ? (message) => {
-      console.log('💬 ChatInput: *** RECEIVED MESSAGE FROM useSessionSharing (MATRIX TAB ONLY) ***', message);
-      
-      // Extract text content safely
-      const firstContent = message.content && message.content.length > 0 ? message.content[0] : null;
-      let contentPreview = 'N/A';
-      
-      if (firstContent) {
-        if (firstContent.type === 'text') {
-          contentPreview = firstContent.text.substring(0, 50) + '...';
-        } else if (firstContent.type === 'image') {
-          contentPreview = '[Image]';
-        } else if (firstContent.type === 'toolRequest') {
-          contentPreview = `[Tool: ${firstContent.toolCall.value?.name}]`;
-        } else {
-          contentPreview = `[${firstContent.type}]`;
-        }
-      }
 
-      console.log('💬 ChatInput: Message details:', {
-        id: message.id,
-        role: message.role,
-        content: contentPreview,
-        sender: message.sender?.displayName || message.sender?.userId || 'unknown',
-        hasAppendFunction: !!append,
-        appendFunctionType: typeof append,
-        sessionId: sessionId,
-        isMatrixRoom: isMatrixRoom,
-        actualMatrixRoomId: actualMatrixRoomId,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Only Matrix tabs should receive Matrix messages through onMessageSync
-      if (append) {
-        console.log('💬 ChatInput: *** CALLING APPEND FUNCTION WITH MESSAGE (MATRIX TAB) ***');
-        console.log('💬 ChatInput: *** MESSAGE BEING SENT TO APPEND ***:', JSON.stringify(message, null, 2));
-        try {
-          const result = append(message);
-          console.log('💬 ChatInput: *** APPEND FUNCTION RETURNED ***:', result);
-          console.log('💬 ChatInput: *** APPEND SUCCESSFUL - MESSAGE SHOULD APPEAR IN MATRIX TAB ***');
-          
-          // REMOVED: Duplicate event dispatch that was causing session mismatch
-          // The BaseChat2 component already dispatches the proper matrix-message-received event with targetSessionId
-          
-        } catch (error) {
-          console.error('💬 ChatInput: *** APPEND FUNCTION FAILED ***:', error);
-        }
-      } else {
-        console.warn('⚠️ ChatInput: *** APPEND FUNCTION IS NOT AVAILABLE! ***');
-      }
-    } : undefined, // Non-Matrix tabs get undefined, so they won't receive Matrix messages
-    initialRoomId: actualMatrixRoomId, // FIXED: Always pass Matrix room ID if available, regardless of isMatrixRoom flag
-    onParticipantJoin: (participant) => {
-      console.log('👥 Participant joined session:', participant);
-    },
-    onParticipantLeave: (userId) => {
-      console.log('👋 Participant left session:', userId);
-    },
-  });
+  // Tab context (sidecar features, doc/web viewers, etc.)
+  const tabContext = useTabContext();
 
-  // Track which messages have been sent to Matrix to prevent duplicates
-  const sentToMatrixRef = useRef<Set<string>>(new Set());
+  // Supabase-backed collaborative agent session state for this Goose session
+  const collab = useCollaborativeAgentSession(sessionId ?? undefined);
 
-  // Listen for AI responses to sync to Matrix or collaborative sessions
-  // FIXED: Robust null checking to prevent "Cannot read properties of undefined (reading 'length')" error
-  // Updated: Fixed all commandHistory.length accesses with safeCommandHistory
-  // Final fix: All .length accesses now properly null-checked
-  // CRITICAL FIX: Only send to Matrix when streaming is complete (chatState is Idle)
-  // CRITICAL FIX 2: Track sent messages to prevent duplicate sends
+  // Track which goose_trigger messages we've already processed on the host
+  const processedGooseTriggersRef = useRef<Set<string>>(new Set());
+
+  // Track which assistant messages we've already published to Supabase
+  const publishedAssistantIdsRef = useRef<Set<string>>(new Set());
+
+  // Publish host AI responses to Supabase so collaborators on other machines can see them.
   useEffect(() => {
     if (!messages || !Array.isArray(messages) || messages.length === 0) return;
 
     const lastMessage = messages[messages.length - 1];
     
-    // Check if the last message is an AI response (assistant role) and not already synced
-    // Also check if it's not from Matrix (to prevent sync loops)
     if (lastMessage && 
         lastMessage.role === 'assistant' && 
         !lastMessage.id?.startsWith('shared-') && 
-        !lastMessage.id?.startsWith('matrix-') &&
-        !lastMessage.sender && // Messages from Matrix have sender info, local AI responses don't
-        !lastMessage.metadata?.isFromMatrix && // Additional check for Matrix-originated messages
-        !lastMessage.metadata?.isFromCollaborator) { // Additional check for collaborator messages
+        !lastMessage.sender && // Local AI responses don't have sender info
+        !lastMessage.metadata?.isFromCollaborator) { // Additional check for collaborator-sourced messages
       
-      // CRITICAL: Only send to Matrix when streaming is complete (chatState is Idle)
-      // This prevents sending partial messages during streaming
+      // Only publish once streaming is complete
       if (chatState !== ChatState.Idle) {
-        console.log('🚫 Skipping Matrix sync - streaming in progress (chatState:', chatState, ')');
         return;
       }
       
-      // CRITICAL: Check if we've already sent this message to Matrix
-      if (lastMessage.id && sentToMatrixRef.current.has(lastMessage.id)) {
-        console.log('🚫 Skipping Matrix sync - message already sent:', lastMessage.id);
+      // Only publish if we're the collaborative session host
+      if (!collab.state.isCollaborative || !collab.state.isHost) return;
+
+      // Avoid duplicates
+      if (lastMessage.id && publishedAssistantIdsRef.current.has(lastMessage.id)) {
         return;
       }
       
@@ -683,50 +548,49 @@ export default function ChatInput({
       }
       
       if (!textContent.trim()) return;
-      
-      // Handle Matrix rooms: send AI response directly to Matrix with goose-session-message format
-      if (isMatrixRoom && actualMatrixRoomId && sendMessage) {
-        console.log('🤖 Sending COMPLETE AI response to Matrix room:', actualMatrixRoomId, '(chatState:', chatState, ', messageId:', lastMessage.id, ')');
-        
-        // Mark as sent BEFORE sending to prevent race conditions
+
+      // Mark as published BEFORE sending to prevent races; remove on failure.
+      if (lastMessage.id) {
+        publishedAssistantIdsRef.current.add(lastMessage.id);
+      }
+
+      collab.actions.sendAssistantMessage(textContent, lastMessage.id).catch((e) => {
         if (lastMessage.id) {
-          sentToMatrixRef.current.add(lastMessage.id);
+          publishedAssistantIdsRef.current.delete(lastMessage.id);
         }
-        
-        // Format as goose-session-message so it can be properly parsed by other clients
-        const sessionMessage = {
-          sessionId: sessionId || actualMatrixRoomId,
-          role: 'assistant',
-          content: textContent,
-          timestamp: Date.now(),
-        };
-        const formattedMessage = `goose-session-message:${JSON.stringify(sessionMessage)}`;
-        
-        // Only send if we have a room ID
-        if (actualMatrixRoomId) {
-          sendMessage(actualMatrixRoomId, formattedMessage).then(() => {
-            console.log('✅ Successfully sent COMPLETE AI response to Matrix room (messageId:', lastMessage.id, ')');
-          }).catch((error) => {
-            console.error('❌ Failed to send AI response to Matrix room:', error);
-            // Remove from sent set if it failed so we can retry
-            if (lastMessage.id) {
-              sentToMatrixRef.current.delete(lastMessage.id);
-            }
-          });
-        }
-      }
-      // Handle non-Matrix collaborative sessions: sync through sessionSharing
-      else if (sessionSharing.isSessionActive && !isMatrixRoom) {
-        console.log('🤖 Syncing COMPLETE AI response to collaborative session (non-Matrix):', lastMessage);
-        sessionSharing.syncMessage({
-          id: lastMessage.id || `ai-${Date.now()}`,
-          role: 'assistant',
-          content: textContent,
-          timestamp: new Date().toISOString(),
-        });
-      }
+        console.error('[CollabSession] Failed to publish assistant message:', e);
+      });
     }
-  }, [messages, sessionSharing, isMatrixRoom, actualMatrixRoomId, sendMessage, chatState]);
+  }, [messages, chatState, collab.state.isCollaborative, collab.state.isHost, collab.actions]);
+
+  // Host: whenever a collaborator sends a @goose-trigger message, run the agent locally.
+  useEffect(() => {
+    if (!collab.state.isCollaborative || !collab.state.isHost) return;
+    const hostId = supabaseSession?.user?.id;
+    if (!hostId) return;
+
+    for (const msg of collab.state.messages) {
+      if (msg.message_type !== 'goose_trigger') continue;
+      if (msg.user_id === hostId) continue; // host will already trigger locally via submit
+      if (processedGooseTriggersRef.current.has(msg.id)) continue;
+
+      processedGooseTriggersRef.current.add(msg.id);
+
+      const stripped = collab.actions.stripAgentMention(msg.content).trim();
+      if (!stripped) continue;
+
+      handleSubmit(
+        new CustomEvent('submit', { detail: { value: stripped } }) as unknown as React.FormEvent
+      );
+    }
+  }, [
+    collab.state.isCollaborative,
+    collab.state.isHost,
+    collab.state.messages,
+    collab.actions,
+    supabaseSession?.user?.id,
+    handleSubmit,
+  ]);
 
 
 
@@ -1573,33 +1437,29 @@ export default function ChatInput({
           LocalMessageStorage.addMessage(allFilePaths.join(' '));
         }
 
-        // CRITICAL: Handle message sending based on room type
-        if (sessionSharing.isSessionActive && !isMatrixRoom) {
-          // Non-Matrix collaborative sessions: sync through sessionSharing
-          console.log('🔄 Syncing user message to collaborative session (non-Matrix):', textToSend);
-          sessionSharing.syncMessage({
-            id: Date.now().toString(),
-            role: 'user',
-            content: textToSend,
-            timestamp: new Date().toISOString(),
-          });
-        } else if (isMatrixRoom && actualMatrixRoomId && sendMessage) {
-          // Matrix rooms: send directly to Matrix
-          console.log('📤 Sending message to Matrix room:', actualMatrixRoomId);
-          try {
-            await sendMessage(actualMatrixRoomId, textToSend);
-            console.log('✅ Successfully sent message to Matrix room');
-          } catch (error) {
-            console.error('❌ Failed to send message to Matrix room:', error);
-            // Still proceed with the normal handleSubmit to show the message locally
-          }
-        } else if (isMatrixRoom) {
-          console.log('⚠️ Matrix room detected but missing actualMatrixRoomId or sendMessage function');
+        // Collaborative sessions: always publish the human message to Supabase.
+        const localMessageId = `local-${Date.now()}`;
+        if (collab.state.isCollaborative) {
+          await collab.actions.sendHumanMessage(textToSend, localMessageId);
         }
 
-        handleSubmit(
-          new CustomEvent('submit', { detail: { value: textToSend } }) as unknown as React.FormEvent
-        );
+        // Only the host runs the agent locally. In collaborative mode, the agent
+        // responds only when explicitly mentioned with @goose.
+        const shouldTriggerAgent = !collab.state.isCollaborative
+          ? true
+          : collab.state.isHost &&
+            (!collab.state.collaborativeMode || collab.actions.shouldTriggerAgent(textToSend));
+
+        const agentTextToSend =
+          collab.state.isCollaborative && collab.state.collaborativeMode
+            ? collab.actions.stripAgentMention(textToSend).trim()
+            : textToSend;
+
+        if (shouldTriggerAgent && agentTextToSend) {
+          handleSubmit(
+            new CustomEvent('submit', { detail: { value: agentTextToSend } }) as unknown as React.FormEvent
+          );
+        }
 
         // Auto-resume queue after sending a NON-interruption message (if it was paused due to interruption)
         if (
@@ -1648,11 +1508,11 @@ export default function ChatInput({
       localDroppedFiles.length,
       onFilesProcessed,
       pastedImages,
-      sessionSharing,
+      collab.state.isCollaborative,
+      collab.state.isHost,
+      collab.state.collaborativeMode,
+      collab.actions,
       setLocalDroppedFiles,
-      isMatrixRoom,
-      actualMatrixRoomId,
-      sendMessage,
     ]
   );
 
@@ -1774,7 +1634,6 @@ export default function ChatInput({
       isCompacting,
       agentIsReady,
       gooseEnabled,
-      isMatrixRoom,
       isExtensionsLoading,
       displayValue: displayValue.trim().substring(0, 20),
       hasContent: !!displayValue.trim(),
@@ -2021,42 +1880,11 @@ export default function ChatInput({
       return;
     }
     
-    try {
-      // Matrix invitation for Matrix user IDs
-      await sessionSharing.inviteToSession(friendUserId);
-      
-      // Replace the @ mention with a friend mention format
-      const friendName = friendUserId.split(':')[0].substring(1); // Extract username from Matrix ID
-      const mentionText = `@${friendName}`;
-      
-      const beforeMention = displayValue.slice(0, mentionPopover.mentionStart);
-      const afterMention = displayValue.slice(
-        mentionPopover.mentionStart + 1 + mentionPopover.query.length
-      );
-      const newValue = `${beforeMention}${mentionText} ${afterMention}`;
-
-      setDisplayValue(newValue);
-      setValue(newValue);
-      setMentionPopover((prev) => ({ ...prev, isOpen: false }));
-      textAreaRef.current?.focus();
-
-      // Set cursor position after the inserted mention and space
-      const newCursorPosition = beforeMention.length + mentionText.length + 1;
-      setTimeout(() => {
-        if (textAreaRef.current) {
-          textAreaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-          textAreaRef.current.focus();
-        }
-      }, 0);
-      
-      console.log('✅ Successfully invited friend and updated UI');
-    } catch (error) {
-      console.error('❌ Failed to invite friend:', error);
-      toastError({
-        title: 'Invitation Failed',
-        msg: error instanceof Error ? error.message : 'Failed to invite friend to session',
-      });
-    }
+    // Matrix invites are deprecated/removed. If we got here, it's an unknown mention type.
+    toastError({
+      title: 'Invitation Failed',
+      msg: 'Unknown mention target. Join a Team channel to invite connected users.',
+    });
   };
 
   const openActionPopoverAt = useCallback(
@@ -2602,18 +2430,6 @@ export default function ChatInput({
                         <div className="px-1">
                           <BottomMenuModeSelection shouldShowIconOnly={false} />
                         </div>
-
-                        {!isMatrixRoom && (
-                          <div className="px-1">
-                            <SessionSharing
-                              sessionId={sessionId || ''}
-                              sessionTitle={sessionId || 'Chat'}
-                              messages={messages}
-                              sessionSharing={sessionSharing}
-                              shouldShowIconOnly={false}
-                            />
-                          </div>
-                        )}
                       </div>
                     </DropdownMenuContent>
                   </DropdownMenu>

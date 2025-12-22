@@ -211,10 +211,12 @@ const EnhancedMentionPopover = forwardRef<
     getDisplayItems: () => mentionItems,
     selectItem: (index: number) => {
       const item = mentionItems[index];
+      console.log('🎯 selectItem (keyboard):', { index, item, itemId: item?.id, itemType: item?.type, itemUserId: item?.userId });
       if (!item) return;
       
       if (item.type === 'connected-user' && item.userId) {
         // Pass the full item.id which includes 'supabase:' prefix
+        console.log('🔗 Passing connected-user ID (keyboard):', item.id);
         onInviteFriend(item.id);
       } else if (item.type === 'goose-command' && item.userId) {
         // For goose commands, pass the command name (e.g., 'goose', 'goose off')
@@ -256,10 +258,12 @@ const EnhancedMentionPopover = forwardRef<
   const handleItemClick = (index: number) => {
     onSelectedIndexChange(index);
     const item = mentionItems[index];
+    console.log('🎯 handleItemClick:', { index, item, itemId: item?.id, itemType: item?.type, itemUserId: item?.userId });
     if (!item) return;
     
     if (item.type === 'connected-user' && item.userId) {
       // Pass the full item.id which includes 'supabase:' prefix
+      console.log('🔗 Passing connected-user ID:', item.id);
       onInviteFriend(item.id);
     } else if (item.type === 'goose-command' && item.userId) {
       // For goose commands, pass the command name

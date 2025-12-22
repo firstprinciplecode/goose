@@ -41,7 +41,7 @@ export interface SessionHumanMessage {
   session_id: string;
   user_id: string;
   content: string;
-  message_type: 'user' | 'system' | 'goose_trigger';
+  message_type: 'user' | 'system' | 'goose_trigger' | 'assistant';
   local_message_id?: string;
   created_at: string;
   user_email?: string;
@@ -276,7 +276,7 @@ export async function sendMessage(
   userId: string,
   content: string,
   options?: {
-    messageType?: 'user' | 'system' | 'goose_trigger';
+    messageType?: 'user' | 'system' | 'goose_trigger' | 'assistant';
     localMessageId?: string;
     userEmail?: string;
     userDisplayName?: string;

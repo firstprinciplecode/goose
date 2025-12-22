@@ -71,6 +71,8 @@ export interface CollaborativeSessionActions {
   end: () => Promise<void>;
   /** Send a human message to the session */
   sendHumanMessage: (content: string, localMessageId?: string) => Promise<void>;
+  /** Send an assistant response to the session (host-only via RLS) */
+  sendAssistantMessage: (content: string, localMessageId?: string) => Promise<void>;
   /** Toggle collaborative mode */
   toggleCollaborativeMode: () => Promise<void>;
   /** Create an invite link */
@@ -390,6 +392,23 @@ export function useCollaborativeAgentSession(
     [client, collabSession, authSession?.user?.id, authSession?.user?.email]
   );
 
+  const sendAssistantMessage = useCallback(
+    async (content: string, localMessageId?: string) => {
+      if (!client || !collabSession || !authSession?.user?.id) return;
+
+      try {
+        await sendMessage(client, collabSession.id, authSession.user.id, content, {
+          messageType: 'assistant',
+          localMessageId,
+          userEmail: authSession.user.email,
+        });
+      } catch (e) {
+        setError(getErrorMessage(e));
+      }
+    },
+    [client, collabSession, authSession?.user?.id, authSession?.user?.email]
+  );
+
   const toggleCollaborativeMode = useCallback(async () => {
     if (!client || !collabSession || !isHost) return;
 
@@ -508,6 +527,7 @@ export function useCollaborativeAgentSession(
       leave,
       end,
       sendHumanMessage,
+      sendAssistantMessage,
       toggleCollaborativeMode,
       createInviteLink,
       loadOlderMessages,
@@ -523,6 +543,7 @@ export function useCollaborativeAgentSession(
       leave,
       end,
       sendHumanMessage,
+      sendAssistantMessage,
       toggleCollaborativeMode,
       createInviteLink,
       loadOlderMessages,
