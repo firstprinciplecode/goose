@@ -81,18 +81,44 @@ create table if not exists public.session_invites (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references public.collaborative_sessions(id) on delete cascade,
   invited_by uuid not null references auth.users(id) on delete cascade,
-  target_user_id uuid references auth.users(id) on delete cascade, -- Direct invite to connected user
-  target_email text, -- Email invite (for non-connected users)
+  target_email text,
   invite_token text unique default encode(gen_random_bytes(16), 'hex'),
   status text not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'expired')),
   expires_at timestamptz default (now() + interval '7 days'),
   created_at timestamptz default now(),
   redeemed_at timestamptz,
-  redeemed_by uuid references auth.users(id),
-  
-  -- At least one target must be specified
-  constraint session_invite_has_target check (target_user_id is not null or target_email is not null)
+  redeemed_by uuid references auth.users(id)
 );
+
+-- Add target_user_id column if it doesn't exist (for direct invites to connected users)
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'session_invites' and column_name = 'target_user_id'
+  ) then
+    alter table public.session_invites 
+      add column target_user_id uuid references auth.users(id) on delete cascade;
+  end if;
+end$$;
+
+-- Drop old constraint if it exists (we're making target_email optional now)
+alter table public.session_invites drop constraint if exists session_invite_has_target;
+
+-- Add constraint: at least one target must be specified
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.constraint_column_usage
+    where table_schema = 'public' and table_name = 'session_invites' and constraint_name = 'session_invite_has_target'
+  ) then
+    alter table public.session_invites 
+      add constraint session_invite_has_target check (target_user_id is not null or target_email is not null);
+  end if;
+exception when others then
+  -- Constraint might already exist or conflict, ignore
+  null;
+end$$;
 
 -- Index for looking up invites by token
 create index if not exists idx_session_invites_token 
@@ -103,8 +129,16 @@ create index if not exists idx_session_invites_email
   on public.session_invites(target_email, status) where target_email is not null;
 
 -- Index for finding pending direct invites for a user
-create index if not exists idx_session_invites_user
-  on public.session_invites(target_user_id, status) where target_user_id is not null;
+do $$
+begin
+  if not exists (
+    select 1 from pg_indexes
+    where schemaname = 'public' and indexname = 'idx_session_invites_user'
+  ) then
+    create index idx_session_invites_user
+      on public.session_invites(target_user_id, status) where target_user_id is not null;
+  end if;
+end$$;
 
 -- =============================================================================
 -- FUNCTIONS
@@ -255,6 +289,21 @@ alter table public.collaborative_sessions enable row level security;
 alter table public.session_participants enable row level security;
 alter table public.session_human_messages enable row level security;
 alter table public.session_invites enable row level security;
+
+-- Drop existing policies first (idempotent migration)
+drop policy if exists "Users can view sessions they participate in" on public.collaborative_sessions;
+drop policy if exists "Authenticated users can create sessions" on public.collaborative_sessions;
+drop policy if exists "Host can update their sessions" on public.collaborative_sessions;
+drop policy if exists "Host can delete their sessions" on public.collaborative_sessions;
+drop policy if exists "Participants can view other participants in their sessions" on public.session_participants;
+drop policy if exists "Host can manage participants" on public.session_participants;
+drop policy if exists "Participants can leave (update their own record)" on public.session_participants;
+drop policy if exists "Participants can view messages in their sessions" on public.session_human_messages;
+drop policy if exists "Participants can send messages to their sessions" on public.session_human_messages;
+drop policy if exists "Users can view invites they created or are targeted to them" on public.session_invites;
+drop policy if exists "Session participants can create invites" on public.session_invites;
+drop policy if exists "Invite creator can update their invites" on public.session_invites;
+drop policy if exists "Invite creator or target can update invites" on public.session_invites;
 
 -- collaborative_sessions policies
 create policy "Users can view sessions they participate in"
