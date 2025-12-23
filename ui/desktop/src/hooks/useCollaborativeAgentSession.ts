@@ -87,6 +87,8 @@ export interface CollaborativeSessionActions {
   stripAgentMention: (content: string) => string;
   /** Refresh session state */
   refresh: () => Promise<void>;
+  /** Sync existing messages to the collaborative session (for backfilling on session creation) */
+  syncExistingMessages: (sessionId: string, messages: Array<{ role: string; content: unknown; id?: string; created?: number }>) => Promise<void>;
 }
 
 export interface UseCollaborativeAgentSessionReturn {
@@ -437,6 +439,48 @@ export function useCollaborativeAgentSession(
     [client, collabSession, authSession?.user?.id, authSession?.user?.email]
   );
 
+  // Sync existing messages to a collaborative session (for backfilling on session creation)
+  const syncExistingMessages = useCallback(
+    async (sessionId: string, msgs: Array<{ role: string; content: unknown; id?: string; created?: number }>) => {
+      if (!client || !authSession?.user?.id) {
+        console.warn('[CollabSession] Cannot sync messages: not authenticated');
+        return;
+      }
+
+      console.log('[CollabSession] 📤 Syncing', msgs.length, 'existing messages to session:', sessionId);
+
+      for (const msg of msgs) {
+        // Extract text content from the message
+        let textContent = '';
+        if (typeof msg.content === 'string') {
+          textContent = msg.content;
+        } else if (Array.isArray(msg.content)) {
+          textContent = msg.content
+            .filter((part: { type: string }) => part.type === 'text')
+            .map((part: { type: string; text?: string }) => part.text || '')
+            .join('\n');
+        }
+
+        if (!textContent.trim()) continue;
+
+        const messageType = msg.role === 'assistant' ? 'assistant' : 'user';
+        
+        try {
+          await sendMessage(client, sessionId, authSession.user.id, textContent, {
+            messageType,
+            localMessageId: msg.id,
+            userEmail: authSession.user.email,
+          });
+        } catch (e) {
+          console.error('[CollabSession] Failed to sync message:', e);
+        }
+      }
+
+      console.log('[CollabSession] ✅ Finished syncing existing messages');
+    },
+    [client, authSession?.user?.id, authSession?.user?.email]
+  );
+
   const toggleCollaborativeMode = useCallback(async () => {
     if (!client || !collabSession || !isHost) return;
 
@@ -572,6 +616,7 @@ export function useCollaborativeAgentSession(
       end,
       sendHumanMessage,
       sendAssistantMessage,
+      syncExistingMessages,
       toggleCollaborativeMode,
       createInviteLink,
       loadOlderMessages,
@@ -588,6 +633,7 @@ export function useCollaborativeAgentSession(
       end,
       sendHumanMessage,
       sendAssistantMessage,
+      syncExistingMessages,
       toggleCollaborativeMode,
       createInviteLink,
       loadOlderMessages,

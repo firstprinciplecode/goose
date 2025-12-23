@@ -515,6 +515,9 @@ export default function ChatInput({
 
   // Track which users we've already invited in this session (to prevent duplicate invites)
   const invitedUsersRef = useRef<Set<string>>(new Set());
+  
+  // Track if we just joined a collab session in this execution (React state won't update until next render)
+  const justJoinedCollabSessionRef = useRef<string | null>(null);
 
   // Publish host AI responses to Supabase so collaborators on other machines can see them.
   useEffect(() => {
@@ -1477,6 +1480,16 @@ export default function ChatInput({
                   await collab.actions.joinSession(collabSession.id);
                   console.log('🔗 Joined collaborative session as host:', collabSession.id);
                   
+                  // Sync existing messages to Supabase so joinee can see them
+                  if (messages.length > 0) {
+                    console.log('📤 Backfilling', messages.length, 'existing messages to Supabase');
+                    await collab.actions.syncExistingMessages(collabSession.id, messages);
+                  }
+                  
+                  // Mark that we just joined a session in THIS execution
+                  // React state won't update until next render, so we track it locally
+                  justJoinedCollabSessionRef.current = collabSession.id;
+                  
                   await inviteSupabaseUser(supabaseClient, collabSession.id, supabaseSession.user.id, targetUser.userId);
                   invitedUsersRef.current.add(targetUser.userId);
                   console.log('✅ Sent invite to:', targetUser.userId, '(', email, ')');
@@ -1491,10 +1504,16 @@ export default function ChatInput({
         }
 
         // Collaborative sessions: always publish the human message to Supabase.
+        // Check both the React state AND our local ref (for same-execution join)
+        const isCollaborativeNow = collab.state.isCollaborative || justJoinedCollabSessionRef.current !== null;
         const localMessageId = `local-${Date.now()}`;
-        if (collab.state.isCollaborative) {
+        if (isCollaborativeNow) {
+          console.log('[ChatInput] 📤 Syncing human message to Supabase');
           await collab.actions.sendHumanMessage(textToSend, localMessageId);
         }
+        
+        // Reset the ref after use
+        justJoinedCollabSessionRef.current = null;
 
         // Only the host runs the agent locally. In collaborative mode, the agent
         // responds only when explicitly mentioned with @goose.
