@@ -556,37 +556,54 @@ export function useCollaborativeAgentSession(
   // Poll periodically because ChatInput and BaseChat2 have separate hook instances
   // ==========================================================================
   useEffect(() => {
+    console.log('🟡 POLL EFFECT:', { 
+      gooseSessionId, 
+      hasClient: !!client, 
+      isEnabled, 
+      hasUser: !!authSession?.user?.id,
+      hasCollabSession: !!collabSession,
+      collabSessionId: collabSession?.id,
+    });
+
     if (!client || !isEnabled || !gooseSessionId || !authSession?.user?.id) {
+      console.log('🔴 POLL SKIPPED - missing deps');
+      return;
+    }
+
+    // If we already have a session, don't poll
+    if (collabSession) {
+      console.log('🟢 POLL SKIPPED - already have session:', collabSession.id);
       return;
     }
 
     let isMounted = true;
+    let pollCount = 0;
 
     const checkForSession = async () => {
-      // Skip if we already have a session loaded
-      if (collabSession) {
-        return;
-      }
+      pollCount++;
+      console.log(`🔄 POLLING for session (${pollCount}):`, gooseSessionId);
 
       try {
         const existingSession = await getSessionByGooseId(client, gooseSessionId);
+        console.log(`🔄 POLL result:`, existingSession?.id || 'null');
         
         if (existingSession && isMounted) {
-          console.log('🔄 Found collaborative session, loading:', existingSession.id);
+          console.log('🟢 Found collaborative session, loading:', existingSession.id);
           await loadSessionData(existingSession.id);
         }
-      } catch (e) {
-        // Silently ignore errors during polling
+      } catch (e: any) {
+        console.log('🔴 POLL error:', e?.message || e);
       }
     };
 
-    // Initial check
+    // Initial check immediately
     void checkForSession();
 
     // Poll every 2 seconds to detect sessions created by other components
     const pollInterval = setInterval(checkForSession, 2000);
 
     return () => {
+      console.log('🟠 POLL CLEANUP for:', gooseSessionId);
       isMounted = false;
       clearInterval(pollInterval);
     };
