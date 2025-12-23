@@ -553,46 +553,44 @@ export function useCollaborativeAgentSession(
 
   // ==========================================================================
   // Auto-connect to Goose session if provided
+  // Poll periodically because ChatInput and BaseChat2 have separate hook instances
   // ==========================================================================
   useEffect(() => {
-    console.log('🟡 AUTO-CONNECT useEffect RUNNING:', { 
-      gooseSessionId, 
-      hasClient: !!client, 
-      isEnabled, 
-      hasUser: !!authSession?.user?.id 
-    });
-    
     if (!client || !isEnabled || !gooseSessionId || !authSession?.user?.id) {
-      console.log('🔴 AUTO-CONNECT SKIPPED - missing deps:', {
-        hasClient: !!client,
-        isEnabled,
-        gooseSessionId,
-        hasUser: !!authSession?.user?.id,
-      });
       return;
     }
 
-    console.log('🟢 AUTO-CONNECTING to goose session:', gooseSessionId);
+    let isMounted = true;
 
-    // Check if there's an existing collaborative session for this Goose session
-    (async () => {
+    const checkForSession = async () => {
+      // Skip if we already have a session loaded
+      if (collabSession) {
+        return;
+      }
+
       try {
-        console.log('🔍 Calling getSessionByGooseId for:', gooseSessionId);
         const existingSession = await getSessionByGooseId(client, gooseSessionId);
-        console.log('🔍 getSessionByGooseId result:', existingSession?.id, existingSession?.title || '(no session found)');
         
-        if (existingSession) {
-          console.log('📥 Loading collaborative session data...');
+        if (existingSession && isMounted) {
+          console.log('🔄 Found collaborative session, loading:', existingSession.id);
           await loadSessionData(existingSession.id);
-          console.log('✅ Collaborative session data loaded!');
-        } else {
-          console.log('⚠️ No collaborative session found for goose session:', gooseSessionId);
         }
       } catch (e) {
-        console.error('❌ Error checking for existing collaborative session:', e);
+        // Silently ignore errors during polling
       }
-    })();
-  }, [client, isEnabled, gooseSessionId, authSession?.user?.id, loadSessionData]);
+    };
+
+    // Initial check
+    void checkForSession();
+
+    // Poll every 2 seconds to detect sessions created by other components
+    const pollInterval = setInterval(checkForSession, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
+  }, [client, isEnabled, gooseSessionId, authSession?.user?.id, loadSessionData, collabSession]);
 
   // Cleanup on unmount
   useEffect(() => {
