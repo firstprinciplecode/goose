@@ -425,7 +425,22 @@ export function useCollaborativeAgentSession(
 
   const sendHumanMessage = useCallback(
     async (content: string, localMessageId?: string) => {
-      if (!client || !collabSession || !authSession?.user?.id) return;
+      console.log('[CollabSession] sendHumanMessage called:', {
+        hasClient: !!client,
+        hasSession: !!collabSession,
+        sessionId: collabSession?.id,
+        hasUser: !!authSession?.user?.id,
+        contentPreview: content.slice(0, 50),
+      });
+      
+      if (!client || !collabSession || !authSession?.user?.id) {
+        console.warn('[CollabSession] sendHumanMessage skipped - missing:', {
+          client: !!client,
+          session: !!collabSession,
+          user: !!authSession?.user?.id,
+        });
+        return;
+      }
 
       try {
         const isGooseTrigger = containsGooseMention(content);
@@ -434,7 +449,9 @@ export function useCollaborativeAgentSession(
           localMessageId,
           userEmail: authSession.user.email,
         });
+        console.log('[CollabSession] ✅ sendHumanMessage success:', content.slice(0, 50));
       } catch (e) {
+        console.error('[CollabSession] ❌ sendHumanMessage failed:', e);
         setError(getErrorMessage(e));
       }
     },
@@ -510,12 +527,22 @@ export function useCollaborativeAgentSession(
         }
         
         try {
+          // Convert Unix timestamp to ISO string for database
+          // msg.created could be in seconds or milliseconds
+          let createdAt: string | undefined;
+          if (msg.created) {
+            // If timestamp is in seconds (< 10 billion), convert to milliseconds
+            const ts = msg.created < 10000000000 ? msg.created * 1000 : msg.created;
+            createdAt = new Date(ts).toISOString();
+          }
+          
           await sendMessage(client, sessionId, authSession.user.id, textContent, {
             messageType,
             localMessageId: msg.id,
             userEmail: authSession.user.email,
+            createdAt,
           });
-          console.log('[CollabSession] ✅ Synced message:', messageType, textContent.slice(0, 50));
+          console.log('[CollabSession] ✅ Synced message:', messageType, textContent.slice(0, 50), 'at', createdAt);
           synced++;
           // Add to existing sets to prevent duplicates within this sync batch
           if (msg.id) existingLocalIds.add(msg.id);

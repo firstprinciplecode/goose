@@ -297,19 +297,27 @@ export async function sendMessage(
     localMessageId?: string;
     userEmail?: string;
     userDisplayName?: string;
+    createdAt?: string; // ISO timestamp to preserve original message order
   }
 ): Promise<SessionHumanMessage> {
+  const insertData: Record<string, unknown> = {
+    session_id: sessionId,
+    user_id: userId,
+    content,
+    message_type: options?.messageType || 'user',
+    local_message_id: options?.localMessageId,
+    user_email: options?.userEmail,
+    user_display_name: options?.userDisplayName,
+  };
+  
+  // If createdAt is provided, use it instead of database default
+  if (options?.createdAt) {
+    insertData.created_at = options.createdAt;
+  }
+  
   const { data, error } = await client
     .from('session_human_messages')
-    .insert({
-      session_id: sessionId,
-      user_id: userId,
-      content,
-      message_type: options?.messageType || 'user',
-      local_message_id: options?.localMessageId,
-      user_email: options?.userEmail,
-      user_display_name: options?.userDisplayName,
-    })
+    .insert(insertData)
     .select()
     .single();
 
