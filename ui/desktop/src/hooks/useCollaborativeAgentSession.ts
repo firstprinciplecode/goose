@@ -287,7 +287,16 @@ export function useCollaborativeAgentSession(
           console.error('[CollabSession] ⚠️ Failed to load messages:', msgErr?.message || msgErr);
           // Continue anyway
         }
-        setMessages(msgs);
+        // Merge loaded messages with existing (avoid duplicates from subscription overlap)
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const newMsgs = msgs.filter(m => !existingIds.has(m.id));
+          const merged = [...prev, ...newMsgs];
+          // Sort by created_at
+          merged.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          console.log('[CollabSession] Merged messages:', { prev: prev.length, new: newMsgs.length, total: merged.length });
+          return merged;
+        });
         if (msgs.length > 0) {
           setMessagesCursor(msgs[0].created_at);
         }

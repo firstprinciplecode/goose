@@ -193,7 +193,16 @@ function BaseChatContent({
 
     // Merge and sort by timestamp
     const allMessages = [...messages, ...collabConverted];
-    allMessages.sort((a, b) => {
+    
+    // Final deduplication pass - remove any duplicates by ID
+    const seenIds = new Set<string>();
+    const dedupedMessages = allMessages.filter(m => {
+      if (seenIds.has(m.id)) return false;
+      seenIds.add(m.id);
+      return true;
+    });
+    
+    dedupedMessages.sort((a, b) => {
       // created is a timestamp (number) - treat 0 or undefined as epoch
       const aTime = typeof a.created === 'number' ? a.created : 0;
       const bTime = typeof b.created === 'number' ? b.created : 0;
@@ -203,13 +212,14 @@ function BaseChatContent({
     console.log('[BaseChat2] Merged messages:', {
       local: messages.length,
       collab: collabConverted.length,
-      total: allMessages.length,
+      beforeDedup: allMessages.length,
+      afterDedup: dedupedMessages.length,
       isCollaborative: collab.state.isCollaborative,
     });
 
     // Debug: Log first 3 messages in detail
-    if (allMessages.length > 0) {
-      console.log('📜 MERGED MESSAGE DETAILS:', allMessages.slice(0, 3).map(m => {
+    if (dedupedMessages.length > 0) {
+      console.log('📜 MERGED MESSAGE DETAILS:', dedupedMessages.slice(0, 3).map(m => {
         const firstContent = m.content?.[0];
         const textContent = firstContent && 'text' in firstContent ? firstContent.text : null;
         return {
@@ -225,7 +235,7 @@ function BaseChatContent({
       }));
     }
 
-    return allMessages;
+    return dedupedMessages;
   }, [messages, collab.state.isCollaborative, collab.state.messages, convertCollabMessage]);
 
   // Auto-send @goose off for Matrix chats on initial load
