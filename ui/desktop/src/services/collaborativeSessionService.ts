@@ -300,6 +300,13 @@ export async function sendMessage(
     createdAt?: string; // ISO timestamp to preserve original message order
   }
 ): Promise<SessionHumanMessage> {
+  console.log('[CollabSession] 📤 sendMessage called:', {
+    sessionId,
+    userId,
+    contentPreview: content.slice(0, 50),
+    messageType: options?.messageType,
+  });
+  
   const insertData: Record<string, unknown> = {
     session_id: sessionId,
     user_id: userId,
@@ -321,7 +328,12 @@ export async function sendMessage(
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('[CollabSession] ❌ sendMessage failed:', error);
+    throw error;
+  }
+  
+  console.log('[CollabSession] ✅ sendMessage success:', data.id);
   return data;
 }
 
@@ -544,6 +556,11 @@ export function subscribeToMessages(
       filter: `session_id=eq.${sessionId}`,
     },
     (payload) => {
+      console.log('[CollabSession] 🔔 MESSAGE INSERT event received:', {
+        sessionId,
+        messageId: (payload.new as any)?.id,
+        content: (payload.new as any)?.content?.slice(0, 50),
+      });
       onMessage(payload.new as SessionHumanMessage);
     }
   );

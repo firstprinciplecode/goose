@@ -179,9 +179,20 @@ export function useCollaborativeAgentSession(
 
       // Subscribe to messages
       messageSubRef.current = subscribeToMessages(client, sessionId, (msg) => {
+        console.log('[CollabSession] 📩 RECEIVED MESSAGE via subscription:', {
+          id: msg.id,
+          content: msg.content?.slice(0, 50),
+          user_id: msg.user_id,
+          message_type: msg.message_type,
+          created_at: msg.created_at,
+        });
         setMessages((prev) => {
           // Deduplicate
-          if (prev.some((m) => m.id === msg.id)) return prev;
+          if (prev.some((m) => m.id === msg.id)) {
+            console.log('[CollabSession] ⏭️ Skipping duplicate message:', msg.id);
+            return prev;
+          }
+          console.log('[CollabSession] ✅ Adding new message to state, total:', prev.length + 1);
           return [...prev, msg];
         });
       });
