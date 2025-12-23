@@ -120,6 +120,14 @@ export function useCollaborativeAgentSession(
 ): UseCollaborativeAgentSessionReturn {
   const { client, session: authSession, isEnabled } = useSupabase();
 
+  // Debug: Log hook invocation
+  console.log('🔵 useCollaborativeAgentSession CALLED:', { 
+    gooseSessionId, 
+    hasClient: !!client, 
+    isEnabled, 
+    hasUser: !!authSession?.user?.id 
+  });
+
   // State
   const [collabSession, setCollabSession] = useState<CollaborativeSession | null>(null);
   const [participants, setParticipants] = useState<SessionParticipant[]>([]);
@@ -547,8 +555,15 @@ export function useCollaborativeAgentSession(
   // Auto-connect to Goose session if provided
   // ==========================================================================
   useEffect(() => {
+    console.log('🟡 AUTO-CONNECT useEffect RUNNING:', { 
+      gooseSessionId, 
+      hasClient: !!client, 
+      isEnabled, 
+      hasUser: !!authSession?.user?.id 
+    });
+    
     if (!client || !isEnabled || !gooseSessionId || !authSession?.user?.id) {
-      console.log('[CollabSession] Auto-connect skipped:', {
+      console.log('🔴 AUTO-CONNECT SKIPPED - missing deps:', {
         hasClient: !!client,
         isEnabled,
         gooseSessionId,
@@ -557,23 +572,24 @@ export function useCollaborativeAgentSession(
       return;
     }
 
-    console.log('[CollabSession] 🔍 Auto-connecting to goose session:', gooseSessionId);
+    console.log('🟢 AUTO-CONNECTING to goose session:', gooseSessionId);
 
     // Check if there's an existing collaborative session for this Goose session
     (async () => {
       try {
+        console.log('🔍 Calling getSessionByGooseId for:', gooseSessionId);
         const existingSession = await getSessionByGooseId(client, gooseSessionId);
-        console.log('[CollabSession] Found collaborative session:', existingSession?.id, existingSession?.title);
+        console.log('🔍 getSessionByGooseId result:', existingSession?.id, existingSession?.title || '(no session found)');
         
         if (existingSession) {
-          console.log('[CollabSession] 📥 Loading session data...');
+          console.log('📥 Loading collaborative session data...');
           await loadSessionData(existingSession.id);
-          console.log('[CollabSession] ✅ Session data loaded');
+          console.log('✅ Collaborative session data loaded!');
         } else {
-          console.log('[CollabSession] ⚠️ No collaborative session found for goose session:', gooseSessionId);
+          console.log('⚠️ No collaborative session found for goose session:', gooseSessionId);
         }
       } catch (e) {
-        console.error('[CollabSession] ❌ Error checking for existing session:', e);
+        console.error('❌ Error checking for existing collaborative session:', e);
       }
     })();
   }, [client, isEnabled, gooseSessionId, authSession?.user?.id, loadSessionData]);

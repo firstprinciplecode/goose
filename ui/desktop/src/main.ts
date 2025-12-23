@@ -1926,7 +1926,7 @@ ipcMain.handle('update-child-webviewer-bounds', async (event, viewerId: string, 
 
     const childWindow = childWindows.get(viewerId);
     if (!childWindow || childWindow.isDestroyed()) return false;
-
+    
     // The bounds from React are already relative to the main window's content area
     // We need to convert them to absolute screen coordinates by adding main window position
     // BUT we also need to account for the window frame (title bar, etc.)
@@ -4303,7 +4303,7 @@ ipcMain.handle('spell-suggestions', async (_event, word: string) => {
       
   } catch (error: unknown) {
     const message = getErrorMessage(error);
-    console.error('[Main] Error launching app:', error);
+      console.error('[Main] Error launching app:', error);
     return { success: false, error: message };
     }
   });

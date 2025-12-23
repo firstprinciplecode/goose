@@ -699,12 +699,12 @@ export default function App() {
           <DraftProvider>
             <ModelAndProviderProvider>
                 <SupabaseProvider>
-                  <TabProvider>
-                    <HashRouter>
-                      <AppInner />
-                    </HashRouter>
-                    <AnnouncementModal />
-                  </TabProvider>
+                <TabProvider>
+                  <HashRouter>
+                    <AppInner />
+                  </HashRouter>
+                  <AnnouncementModal />
+                </TabProvider>
                 </SupabaseProvider>
             </ModelAndProviderProvider>
           </DraftProvider>

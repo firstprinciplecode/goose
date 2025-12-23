@@ -325,6 +325,7 @@ export async function getMessages(
   sessionId: string,
   options?: { before?: string; limit?: number }
 ): Promise<SessionHumanMessage[]> {
+  console.log('[getMessages] Fetching messages for session:', sessionId);
   const limit = options?.limit ?? 50;
   
   let query = client
@@ -339,7 +340,13 @@ export async function getMessages(
   }
 
   const { data, error } = await query;
-  if (error) throw error;
+  
+  if (error) {
+    console.error('[getMessages] Error:', error.message, error.code, error.details);
+    throw error;
+  }
+  
+  console.log('[getMessages] Fetched:', data?.length || 0, 'messages');
 
   // Return in chronological order
   return (data || []).reverse();

@@ -634,7 +634,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
                           void window.electron.createPreferencesWindow({ section: 'interface' });
                         }
                       } else {
-                        navigate(item.path!);
+                      navigate(item.path!);
                       }
                       setIsExpanded(false);
                     }}
@@ -701,7 +701,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ isExpanded, setIsE
                           void window.electron.createPreferencesWindow({ section: 'interface' });
                         }
                       } else {
-                        navigate(item.path!);
+                      navigate(item.path!);
                       }
                       setIsExpanded(false);
                     }}

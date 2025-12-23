@@ -588,7 +588,7 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
                                     void window.electron.createPreferencesWindow({ section: 'interface' });
                                   }
                                 } else {
-                                  navigate(item.path);
+                                navigate(item.path);
                                 }
                                 setIsExpanded(false);
                               }
@@ -643,7 +643,7 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
                                   void window.electron.createPreferencesWindow({ section: 'interface' });
                                 }
                               } else {
-                                navigate(item.path);
+                              navigate(item.path);
                               }
                               setIsExpanded(false);
                             }
@@ -726,7 +726,7 @@ export const CondensedNavigation: React.FC<CondensedNavigationProps> = ({
                                     void window.electron.createPreferencesWindow({ section: 'interface' });
                                   }
                                 } else {
-                                  navigate(item.path);
+                                navigate(item.path);
                                 }
                                 setIsExpanded(false);
                               }

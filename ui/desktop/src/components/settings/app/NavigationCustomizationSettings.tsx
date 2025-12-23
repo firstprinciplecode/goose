@@ -59,7 +59,7 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
   {
   id: 'team',
   label: 'Team',
-  icon: Users,
+    icon: Users,
   description: 'Team communication spaces',
   },
   {
