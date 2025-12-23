@@ -119,8 +119,20 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     if (!client || !user || !isEnabled) return;
 
     const pollInvites = async () => {
+      console.log('[NotificationDropdown] 🔄 Polling for invites...');
       try {
         const invites = await getPendingInvites(client, user.id, user.email || undefined);
+        console.log('[NotificationDropdown] 🔄 Poll result:', invites.length, 'pending invites found');
+        
+        if (invites.length > 0) {
+          console.log('[NotificationDropdown] 📋 Invite details:', invites.map(i => ({
+            id: i.id,
+            session_id: i.session_id,
+            status: i.status,
+            goose_session_id: i.goose_session_id,
+          })));
+        }
+        
         setPendingInvites((prev) => {
           // Merge with existing, avoiding duplicates by ID AND session_id
           const existingIds = new Set(prev.map(p => p.id));
@@ -134,8 +146,8 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
           }
           return prev;
         });
-      } catch (e) {
-        // Silently ignore poll errors
+      } catch (e: any) {
+        console.error('[NotificationDropdown] 🔴 Poll error:', e?.message || e);
       }
     };
 
