@@ -118,6 +118,13 @@ function BaseChatContent({
 
   // Collaborative session integration
   const collab = useCollaborativeAgentSession(sessionId);
+  
+  // Debug: log collab state on every render
+  console.log('🔷 BaseChat2 RENDER - collab state:', {
+    collabMessagesCount: collab.state.messages.length,
+    isCollaborative: collab.state.isCollaborative,
+    sessionId: collab.state.sessionId,
+  });
 
   // Convert Supabase collaborative messages to the local Message format
   const convertCollabMessage = useCallback((msg: SessionHumanMessage): Message => {
