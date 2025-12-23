@@ -194,11 +194,17 @@ function BaseChatContent({
       collabMessagesCount: collab.state.messages.length,
       localMessagesCount: messages.length,
       sessionId,
+      collabSessionId: collab.state.session?.id,
+      isHost: collab.state.isHost,
     });
 
     // If not in a collaborative session or no collaborative messages, use local messages
     if (!collab.state.isCollaborative || collab.state.messages.length === 0) {
-      console.log('📊 Using LOCAL messages only (collab not active or no collab messages)');
+      console.log('📊 Using LOCAL messages only:', {
+        reason: !collab.state.isCollaborative ? 'isCollaborative=false' : 'no collab messages',
+        collabSessionExists: !!collab.state.session,
+        collabSessionIsActive: collab.state.session?.is_active,
+      });
       return messages;
     }
 
@@ -218,11 +224,17 @@ function BaseChatContent({
       })
     );
     
+    console.log('📊 Local content signatures:', Array.from(localContentSignatures));
+    
     // Convert and filter collaborative messages (avoid duplicates)
+    let includedCount = 0;
+    let skippedCount = 0;
     const collabConverted = collab.state.messages
       .filter(cm => {
         // Skip if ID matches
         if (localIds.has(cm.id) || localIds.has(cm.local_message_id || '')) {
+          console.log('📊 Skipping collab message (ID match):', cm.id);
+          skippedCount++;
           return false;
         }
         
@@ -230,13 +242,18 @@ function BaseChatContent({
         const collabRole = cm.message_type === 'assistant' ? 'assistant' : 'user';
         const contentSig = `${collabRole}:${cm.content?.slice(0, 100)}`;
         if (localContentSignatures.has(contentSig)) {
-          console.log('📊 Skipping duplicate collab message (content match):', cm.content?.slice(0, 50));
+          console.log('📊 Skipping collab message (content match):', cm.content?.slice(0, 50));
+          skippedCount++;
           return false;
         }
         
+        console.log('📊 Including collab message:', cm.content?.slice(0, 50));
+        includedCount++;
         return true;
       })
       .map(convertCollabMessage);
+    
+    console.log('📊 Collab filter results:', { includedCount, skippedCount, totalCollab: collab.state.messages.length });
 
     // Merge and sort by timestamp
     const allMessages = [...messages, ...collabConverted];
