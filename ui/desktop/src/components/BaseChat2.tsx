@@ -51,6 +51,8 @@ interface BaseChatProps {
   tabId?: string;
   // Tab persistence prop
   isTabActive?: boolean; // Whether this tab is currently active/visible
+  // Collaborative session prop - true when joining (not hosting) a collaborative session
+  isCollaborativeJoin?: boolean;
 }
 
 function BaseChatContent({
@@ -69,6 +71,7 @@ function BaseChatContent({
   showPopularTopics = true,
   loadingChat = false,
   tabId,
+  isCollaborativeJoin = false,
 }: BaseChatProps) {
   const location = useLocation();
   const scrollRef = useRef<ScrollAreaHandle>(null);
@@ -110,6 +113,7 @@ function BaseChatContent({
     isMatrixTab: !!matrixRoomId, // Pass Matrix tab flag based on whether we have a matrixRoomId
     tabId, // Pass tabId for sidecar filtering
     matrixRoomId, // Pass Matrix room ID for loading historical messages
+    isCollaborativeJoin, // Joining a collaborative session - disable Goose auto-response
   });
 
   // Collaborative session integration

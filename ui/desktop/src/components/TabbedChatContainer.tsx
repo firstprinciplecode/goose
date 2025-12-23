@@ -324,6 +324,7 @@ export const TabbedChatContainer: React.FC<TabbedChatContainerProps> = ({
                       showPendingInvites={true}
                       tabId={tabState.tab.id}
                       isTabActive={isActive} // New prop to indicate if tab is active
+                      isCollaborativeJoin={tabState.tab.isCollaborativeJoin} // Disable Goose for collaborative joins
                     />
                   }
                   rightContent={
@@ -366,6 +367,7 @@ export const TabbedChatContainer: React.FC<TabbedChatContainerProps> = ({
                   showPendingInvites={true}
                   tabId={tabState.tab.id}
                   isTabActive={isActive} // New prop to indicate if tab is active
+                  isCollaborativeJoin={tabState.tab.isCollaborativeJoin} // Disable Goose for collaborative joins
                 />
               )}
             </div>

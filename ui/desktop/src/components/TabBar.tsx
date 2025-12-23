@@ -36,6 +36,8 @@ export interface Tab {
   recipeTitle?: string;
   // Add sidecar state to each tab
   sidecarState?: TabSidecarState;
+  // Flag to indicate this tab is joining a collaborative session (not hosting)
+  isCollaborativeJoin?: boolean;
 }
 
 interface TabBarProps {

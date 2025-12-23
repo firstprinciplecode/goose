@@ -166,6 +166,7 @@ interface UseChatStreamProps {
   isMatrixTab?: boolean; // Flag to indicate if this is a Matrix tab that should listen for Matrix messages
   tabId?: string; // Tab ID to filter sidecars for context injection
   matrixRoomId?: string; // Matrix room ID for loading historical messages
+  isCollaborativeJoin?: boolean; // Flag to indicate this is joining a collaborative session (Goose disabled initially)
 }
 
 interface UseChatStreamReturn {
@@ -336,6 +337,7 @@ export function useChatStream({
   isMatrixTab = false,
   tabId,
   matrixRoomId,
+  isCollaborativeJoin = false,
 }: UseChatStreamProps): UseChatStreamReturn {
   
   // Debug logging for Matrix parameters
@@ -351,7 +353,8 @@ export function useChatStream({
   const [session, setSession] = useState<Session>();
   const [sessionLoadError, setSessionLoadError] = useState<string>();
   const [chatState, setChatState] = useState<ChatState>(ChatState.Idle);
-  const [gooseEnabled, setGooseEnabled] = useState<boolean>(true); // Goose starts enabled
+  // Goose starts disabled for collaborative joins (only responds to @goose)
+  const [gooseEnabled, setGooseEnabled] = useState<boolean>(!isCollaborativeJoin);
   const [tokenState, setTokenState] = useState<TokenState>({
     inputTokens: 0,
     outputTokens: 0,
@@ -465,6 +468,17 @@ export function useChatStream({
         setChatState(ChatState.Idle);
         setSession(undefined);
         setMessagesAndLog([], 'new-or-temp-session');
+        setSessionLoadError(undefined);
+        return;
+      }
+
+      // Skip backend loading for collaborative joins - messages come from Supabase instead
+      if (isCollaborativeJoin) {
+        log.session('collaborative-join', sessionId, { note: 'skipping backend load - messages from Supabase' });
+        console.log('🤝 Collaborative join - skipping resumeAgent, messages will come from Supabase');
+        setChatState(ChatState.Idle);
+        setSession(undefined);
+        setMessagesAndLog([], 'collaborative-join');
         setSessionLoadError(undefined);
         return;
       }

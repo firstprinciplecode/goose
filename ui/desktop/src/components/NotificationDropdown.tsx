@@ -198,8 +198,8 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
       // Open the Goose session in a new tab
       if (invite.goose_session_id) {
         const sessionTitle = invite.session_title || `Collab: ${invite.goose_session_id.slice(0, 8)}`;
-        console.log('[NotificationDropdown] 📂 Opening session tab:', invite.goose_session_id, 'title:', sessionTitle);
-        openExistingSession(invite.goose_session_id, sessionTitle);
+        console.log('[NotificationDropdown] 📂 Opening session tab:', invite.goose_session_id, 'title:', sessionTitle, 'isCollaborativeJoin: true');
+        openExistingSession(invite.goose_session_id, sessionTitle, true); // true = isCollaborativeJoin
       } else {
         console.warn('[NotificationDropdown] No goose_session_id in invite, cannot open tab');
         // Still mark as accepted - the invite was processed

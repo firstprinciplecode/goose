@@ -26,7 +26,7 @@ interface TabContextType {
   clearTabState: () => void;
   syncTabTitleWithBackend: (tabId: string) => Promise<void>;
   updateTabTitleFromMessage: (tabId: string, message: string | any) => Promise<void>;
-  openExistingSession: (sessionId: string, title?: string) => void;
+  openExistingSession: (sessionId: string, title?: string, isCollaborativeJoin?: boolean) => void;
   updateSessionId: (tabId: string, newSessionId: string) => void;
   // Matrix-specific methods
   openMatrixChat: (roomId: string, senderId: string, roomName?: string) => void;
@@ -599,8 +599,8 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
   }, [tabStates]);
 
   // Open an existing session in a new tab or switch to it if already open
-  const openExistingSession = useCallback(async (sessionId: string, title?: string) => {
-    console.log('📂 Opening existing session:', { sessionId, title });
+  const openExistingSession = useCallback(async (sessionId: string, title?: string, isCollaborativeJoin?: boolean) => {
+    console.log('📂 Opening existing session:', { sessionId, title, isCollaborativeJoin });
 
     // Check if session is already open in a tab
     const existingTab = tabStates.find(ts => ts.tab.sessionId === sessionId);
@@ -668,7 +668,8 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
       newTab = createNewTab({
         sessionId,
         title: title || 'Loading...',
-        isActive: true
+        isActive: true,
+        isCollaborativeJoin: isCollaborativeJoin || false
       });
     }
     
