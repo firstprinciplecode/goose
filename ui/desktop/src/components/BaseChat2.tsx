@@ -141,7 +141,8 @@ function BaseChatContent({
       displayContent = `*${msg.content}*`;
     } else {
       // Regular user messages from collaborators get prefixed with sender name
-      displayContent = `[${senderLabel}] ${msg.content}`;
+      // Use parentheses instead of brackets to avoid being parsed as action pills
+      displayContent = `(${senderLabel}) ${msg.content}`;
     }
     
     const converted: Message = {
