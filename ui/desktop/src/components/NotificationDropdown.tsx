@@ -105,7 +105,26 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
           console.warn('[NotificationDropdown] Deduped invites from', invites.length, 'to', uniqueInvites.length);
         }
         
-        setPendingInvites(uniqueInvites);
+        // MERGE with existing instead of replacing (preserves invites found by polling)
+        setPendingInvites((prev) => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const newInvites = uniqueInvites.filter(i => !existingIds.has(i.id));
+          
+          // If we found new invites, add them
+          if (newInvites.length > 0) {
+            console.log('[NotificationDropdown] Load found new invites:', newInvites.length);
+            return [...prev, ...newInvites];
+          }
+          
+          // If server returned fewer invites than we have, update to server state
+          // (handles accepted/expired invites being removed)
+          if (uniqueInvites.length < prev.length) {
+            const serverIds = new Set(uniqueInvites.map(i => i.id));
+            return prev.filter(p => serverIds.has(p.id));
+          }
+          
+          return prev;
+        });
       } catch (e) {
         console.error('[NotificationDropdown] Failed to load pending invites:', e);
       }
@@ -119,10 +138,9 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     if (!client || !user || !isEnabled) return;
 
     const pollInvites = async () => {
-      console.log('[NotificationDropdown] 🔄 Polling for invites...');
       try {
         const invites = await getPendingInvites(client, user.id, user.email || undefined);
-        console.log('[NotificationDropdown] 🔄 Poll result:', invites.length, 'pending invites found');
+        console.log('[NotificationDropdown] 🔄 Poll result:', invites.length, 'pending, current state:', pendingInvites.length);
         
         if (invites.length > 0) {
           console.log('[NotificationDropdown] 📋 Invite details:', invites.map(i => ({
@@ -144,6 +162,8 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
             console.log('[NotificationDropdown] Poll found new invites:', newInvites.length);
             return [...prev, ...newInvites];
           }
+          // Don't remove invites if poll returns 0 - keep existing state
+          // (Supabase queries can be inconsistent)
           return prev;
         });
       } catch (e: any) {
