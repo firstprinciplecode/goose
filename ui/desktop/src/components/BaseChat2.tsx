@@ -7,7 +7,7 @@ import ProgressiveMessageList from './ProgressiveMessageList';
 import ChatInput from './ChatInput';
 import { ScrollArea, ScrollAreaHandle } from './ui/scroll-area';
 import { useFileDrop } from '../hooks/useFileDrop';
-import { Message } from '../api';
+import { Message } from '../types/message';
 import { ChatState } from '../types/chatState';
 import { ChatType } from '../types/chat';
 import { useIsMobile } from '../hooks/use-mobile';
@@ -126,11 +126,16 @@ function BaseChatContent({
       type: msg.message_type,
       content: msg.content?.slice(0, 50),
       created_at: msg.created_at,
+      user_id: msg.user_id,
+      currentUserId: collab.state.currentUserId,
     });
     
     const isAssistant = msg.message_type === 'assistant';
     const isSystem = msg.message_type === 'system';
     const senderLabel = msg.user_display_name || msg.user_email || 'Collaborator';
+    
+    // Check if this message is from the current user
+    const isFromSelf = msg.user_id === collab.state.currentUserId;
     
     // Format content based on message type
     let displayContent: string;
@@ -139,10 +144,12 @@ function BaseChatContent({
     } else if (isSystem) {
       // System messages (like "X joined") get italic styling with info prefix
       displayContent = `*${msg.content}*`;
+    } else if (isFromSelf) {
+      // My own messages - show content as-is (will be labeled "You" by UserMessage)
+      displayContent = msg.content;
     } else {
-      // Regular user messages from collaborators get prefixed with sender name
-      // Use parentheses instead of brackets to avoid being parsed as action pills
-      displayContent = `(${senderLabel}) ${msg.content}`;
+      // Messages from OTHER users - prefix with sender name for clarity
+      displayContent = msg.content;
     }
     
     const converted: Message = {
@@ -154,6 +161,12 @@ function BaseChatContent({
         type: 'text',
         text: displayContent,
       }],
+      // Set sender info for messages from OTHER users so UserMessage displays their name
+      sender: (!isAssistant && !isFromSelf && !isSystem) ? {
+        userId: msg.user_id,
+        displayName: senderLabel,
+        avatarUrl: undefined,
+      } : undefined,
     };
     
     const firstContent = converted.content?.[0];
@@ -161,11 +174,14 @@ function BaseChatContent({
       id: converted.id,
       role: converted.role,
       created: converted.created,
+      isFromSelf,
+      hasSender: !!converted.sender,
+      senderName: converted.sender?.displayName,
       contentLength: firstContent && 'text' in firstContent ? firstContent.text?.length : 0,
     });
     
     return converted;
-  }, []);
+  }, [collab.state.currentUserId]);
 
   // Merge local and collaborative messages
   const mergedMessages = useMemo(() => {
@@ -198,7 +214,7 @@ function BaseChatContent({
     // Final deduplication pass - remove any duplicates by ID
     const seenIds = new Set<string>();
     const dedupedMessages = allMessages.filter(m => {
-      if (seenIds.has(m.id)) return false;
+      if (!m.id || seenIds.has(m.id)) return false;
       seenIds.add(m.id);
       return true;
     });

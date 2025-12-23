@@ -56,6 +56,8 @@ export interface CollaborativeSessionState {
   error: string | null;
   /** Cursor for message pagination */
   messagesCursor: string | null;
+  /** Current user's ID for message attribution */
+  currentUserId: string | null;
 }
 
 export interface CollaborativeSessionActions {
@@ -640,6 +642,7 @@ export function useCollaborativeAgentSession(
       isLoadingMessages,
       error,
       messagesCursor,
+      currentUserId: authSession?.user?.id || null,
     }),
     [
       collabSession,
@@ -652,6 +655,7 @@ export function useCollaborativeAgentSession(
       isLoadingMessages,
       error,
       messagesCursor,
+      authSession?.user?.id,
     ]
   );
 
