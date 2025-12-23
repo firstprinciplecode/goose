@@ -68,6 +68,11 @@ function checkForGooseCommands(message: string, currentGooseEnabled: boolean): {
   newGooseEnabled: boolean;
   isGooseCommand: boolean;
 } {
+  console.log('🦆 checkForGooseCommands called:', {
+    message: message.slice(0, 100),
+    currentGooseEnabled,
+  });
+  
   const trimmedMessage = message.trim().toLowerCase();
   
   // Check for goose OFF commands (must be exact matches)
@@ -115,7 +120,9 @@ function checkForGooseCommands(message: string, currentGooseEnabled: boolean): {
   }
   
   // Check email-style mentions (like @hello@getantelope.com)
-  if (emailMentionPattern.test(message)) {
+  const emailMatch = emailMentionPattern.test(message);
+  console.log('🦆 Email mention check:', { pattern: emailMentionPattern.source, message: message.slice(0, 50), match: emailMatch });
+  if (emailMatch) {
     console.log('👥 Detected email user mention - skipping AI response');
     return { skipAI: true, newGooseEnabled: currentGooseEnabled, isGooseCommand: false };
   }

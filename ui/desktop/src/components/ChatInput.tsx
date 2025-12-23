@@ -1447,6 +1447,18 @@ export default function ChatInput({
 
         // Check for @email mentions and create invites
         const emailMentions = extractEmailMentions(textToSend);
+        
+        // DEBUG: Log all conditions for invite flow
+        console.log('🔍 INVITE CONDITIONS CHECK:', {
+          textToSend: textToSend.slice(0, 100),
+          emailMentionsFound: emailMentions,
+          hasSupabaseClient: !!supabaseClient,
+          hasSupabaseUser: !!supabaseSession?.user?.id,
+          supabaseEnabled,
+          sessionId,
+          allConditionsMet: emailMentions.length > 0 && !!supabaseClient && !!supabaseSession?.user?.id && supabaseEnabled && !!sessionId,
+        });
+        
         if (emailMentions.length > 0 && supabaseClient && supabaseSession?.user?.id && supabaseEnabled && sessionId) {
           console.log('📧 Found email mentions in message:', emailMentions);
           
