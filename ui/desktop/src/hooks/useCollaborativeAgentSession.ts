@@ -187,13 +187,19 @@ export function useCollaborativeAgentSession(
           created_at: msg.created_at,
         });
         setMessages((prev) => {
+          console.log('[CollabSession] 🔄 setMessages callback running, prev.length:', prev.length);
           // Deduplicate
           if (prev.some((m) => m.id === msg.id)) {
             console.log('[CollabSession] ⏭️ Skipping duplicate message:', msg.id);
             return prev;
           }
-          console.log('[CollabSession] ✅ Adding new message to state, total:', prev.length + 1);
-          return [...prev, msg];
+          const newMessages = [...prev, msg];
+          console.log('[CollabSession] ✅ Adding new message to state:', {
+            messageId: msg.id,
+            content: msg.content?.slice(0, 30),
+            newTotal: newMessages.length,
+          });
+          return newMessages;
         });
       });
 
@@ -760,19 +766,26 @@ export function useCollaborativeAgentSession(
   // Return
   // ==========================================================================
   const state: CollaborativeSessionState = useMemo(
-    () => ({
-      session: collabSession,
-      participants,
-      messages,
-      isCollaborative,
-      isHost,
-      collaborativeMode,
-      isLoading,
-      isLoadingMessages,
-      error,
-      messagesCursor,
-      currentUserId: authSession?.user?.id || null,
-    }),
+    () => {
+      console.log('[CollabSession] 🔶 State useMemo recomputing:', {
+        messagesCount: messages.length,
+        isCollaborative,
+        sessionId: collabSession?.id,
+      });
+      return {
+        session: collabSession,
+        participants,
+        messages,
+        isCollaborative,
+        isHost,
+        collaborativeMode,
+        isLoading,
+        isLoadingMessages,
+        error,
+        messagesCursor,
+        currentUserId: authSession?.user?.id || null,
+      };
+    },
     [
       collabSession,
       participants,
