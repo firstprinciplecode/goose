@@ -565,8 +565,8 @@ export function subscribeToMessages(
 export function subscribeToParticipants(
   client: SupabaseClient,
   sessionId: string,
-  onJoin: (participant: SessionParticipant) => void,
-  onLeave: (participant: SessionParticipant) => void
+  onJoin: (participant: SessionParticipant) => void | Promise<void>,
+  onLeave: (participant: SessionParticipant) => void | Promise<void>
 ): RealtimeChannel {
   const channel = client.channel(`collab-participants-${sessionId}`);
 
@@ -579,6 +579,7 @@ export function subscribeToParticipants(
       filter: `session_id=eq.${sessionId}`,
     },
     (payload) => {
+      console.log('[CollabSession] 🔔 Participant INSERT received:', payload.new);
       onJoin(payload.new as SessionParticipant);
     }
   );
@@ -592,6 +593,7 @@ export function subscribeToParticipants(
       filter: `session_id=eq.${sessionId}`,
     },
     (payload) => {
+      console.log('[CollabSession] 🔔 Participant UPDATE received:', payload.new);
       const participant = payload.new as SessionParticipant;
       if (!participant.is_active) {
         onLeave(participant);
@@ -600,10 +602,15 @@ export function subscribeToParticipants(
   );
 
   channel.subscribe((status, err) => {
+    console.log('[CollabSession] 🔔 Participant subscription status change:', status, 'session:', sessionId);
     if (status === 'SUBSCRIBED') {
-      console.log('[CollabSession] Subscribed to participants for session:', sessionId);
+      console.log('[CollabSession] ✅ Subscribed to participants for session:', sessionId);
+    } else if (status === 'CHANNEL_ERROR') {
+      console.error('[CollabSession] ❌ Participant subscription channel error:', err);
+    } else if (status === 'TIMED_OUT') {
+      console.error('[CollabSession] ⏰ Participant subscription timed out:', err);
     } else if (err) {
-      console.error('[CollabSession] Participant subscription error:', err);
+      console.error('[CollabSession] ⚠️ Participant subscription error:', err);
     }
   });
 
@@ -882,6 +889,35 @@ export async function getUserByEmail(
     userId: profile.user_id,
     displayName: profile.display_name || profile.email || profile.user_id.slice(0, 8),
     email: profile.email || email,
+  };
+}
+
+/**
+ * Get a user's profile by their user ID
+ * Returns display name and email if found
+ */
+export async function getUserProfileById(
+  client: SupabaseClient,
+  userId: string
+): Promise<{ displayName: string; email: string | null } | null> {
+  const { data: profile, error } = await client
+    .from('profiles')
+    .select('display_name, email')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[getUserProfileById] Error:', error);
+    return null;
+  }
+
+  if (!profile) {
+    return null;
+  }
+
+  return {
+    displayName: profile.display_name || profile.email || userId.slice(0, 8),
+    email: profile.email,
   };
 }
 

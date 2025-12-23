@@ -38,6 +38,8 @@ export interface Tab {
   sidecarState?: TabSidecarState;
   // Flag to indicate this tab is joining a collaborative session (not hosting)
   isCollaborativeJoin?: boolean;
+  // Flag to indicate this tab has an active collaborative session (host or guest)
+  isCollaborative?: boolean;
 }
 
 interface TabBarProps {
@@ -195,15 +197,27 @@ export const TabBar: React.FC<TabBarProps> = ({
             )}
             onClick={() => onTabClick(tab.id)}
           >
+            {/* Collaborative indicator - blue dot for active sessions */}
+            {(tab.isCollaborative || tab.isCollaborativeJoin) && (
+              <div className="flex-shrink-0 w-4 pl-2 flex items-center justify-center">
+                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" title="Collaborative session" />
+              </div>
+            )}
+
             {/* Tab Title - with explicit padding */}
             <div className="flex-1 min-w-0 pl-3">
               <span className={cn(
                 "truncate text-xs font-medium block pointer-events-none text-left",
-                tab.isActive
-                  // Selected: white text
-                  ? "text-white"
-                  // Unselected: gray text (Inactive-Menu color)
-                  : "text-zinc-500 group-hover:text-zinc-300"
+                // Collaborative tabs get blue tint
+                tab.isCollaborative || tab.isCollaborativeJoin
+                  ? tab.isActive
+                    ? "text-blue-300"
+                    : "text-blue-400/70 group-hover:text-blue-300"
+                  : tab.isActive
+                    // Selected: white text
+                    ? "text-white"
+                    // Unselected: gray text (Inactive-Menu color)
+                    : "text-zinc-500 group-hover:text-zinc-300"
               )}>
                 {getTabTitle(tab)}
               </span>

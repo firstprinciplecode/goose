@@ -28,6 +28,8 @@ interface TabContextType {
   updateTabTitleFromMessage: (tabId: string, message: string | any) => Promise<void>;
   openExistingSession: (sessionId: string, title?: string, isCollaborativeJoin?: boolean) => void;
   updateSessionId: (tabId: string, newSessionId: string) => void;
+  // Collaborative session methods
+  setTabCollaborative: (tabId: string, isCollaborative: boolean) => void;
   // Matrix-specific methods
   openMatrixChat: (roomId: string, senderId: string, roomName?: string) => void;
   morphTabToMatrix: (tabId: string, roomId: string, recipientId: string, roomTitle?: string) => Promise<void>;
@@ -716,6 +718,20 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     ));
   }, []);
 
+  // Mark a tab as having an active collaborative session
+  const setTabCollaborative = useCallback((tabId: string, isCollaborative: boolean) => {
+    console.log('👥 Setting tab collaborative status:', { tabId, isCollaborative });
+    
+    setTabStates(prev => prev.map(ts => 
+      ts.tab.id === tabId 
+        ? { 
+            ...ts, 
+            tab: { ...ts.tab, isCollaborative }
+          }
+        : ts
+    ));
+  }, []);
+
   // Sidecar management functions
   const showSidecarView = useCallback((tabId: string, view: TabSidecarView) => {
     
@@ -1139,6 +1155,8 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     updateTabTitleFromMessage,
     openExistingSession,
     updateSessionId,
+    // Collaborative session methods
+    setTabCollaborative,
     // Matrix-specific methods
     openMatrixChat,
     morphTabToMatrix,

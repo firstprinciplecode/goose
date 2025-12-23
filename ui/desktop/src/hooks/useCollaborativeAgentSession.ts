@@ -28,6 +28,7 @@ import {
   subscribeToSession,
   containsGooseMention,
   stripGooseMention,
+  getUserProfileById,
   parseEmailMentions,
   InviteOptions,
 } from '../services/collaborativeSessionService';
@@ -71,8 +72,8 @@ export interface CollaborativeSessionActions {
   leave: () => Promise<void>;
   /** End the session (host only) */
   end: () => Promise<void>;
-  /** Send a human message to the session */
-  sendHumanMessage: (content: string, localMessageId?: string) => Promise<void>;
+  /** Send a human message to the session. sessionIdOverride can be used when React state hasn't updated yet. */
+  sendHumanMessage: (content: string, localMessageId?: string, sessionIdOverride?: string) => Promise<void>;
   /** Send an assistant response to the session (host-only via RLS) */
   sendAssistantMessage: (content: string, localMessageId?: string) => Promise<void>;
   /** Toggle collaborative mode */
@@ -185,37 +186,94 @@ export function useCollaborativeAgentSession(
         });
       });
 
-      // Subscribe to participants
+      // Subscribe to participants - capture current user ID for comparison
+      const currentUserId = authSession?.user?.id;
+      
       participantSubRef.current = subscribeToParticipants(
         client,
         sessionId,
-        (participant) => {
-          // On join
+        async (participant) => {
+          // On join - called when a new participant is inserted
+          console.log('[CollabSession] 🎉 PARTICIPANT JOINED:', {
+            userId: participant.user_id,
+            displayName: participant.display_name,
+            email: participant.email,
+            sessionId: participant.session_id,
+            currentUserId,
+            isCurrentUser: participant.user_id === currentUserId,
+          });
+          
+          // Fetch the user's profile to get their display name
+          let displayName = participant.display_name;
+          let email = participant.email;
+          
+          if (!displayName && !email) {
+            try {
+              const profile = await getUserProfileById(client, participant.user_id);
+              if (profile) {
+                displayName = profile.displayName;
+                email = profile.email || undefined;
+                console.log('[CollabSession] 📋 Fetched profile for participant:', displayName);
+              }
+            } catch (e) {
+              console.warn('[CollabSession] ⚠️ Failed to fetch participant profile:', e);
+            }
+          }
+          
           setParticipants((prev) => {
             const existing = prev.find((p) => p.user_id === participant.user_id);
             if (existing) {
               return prev.map((p) =>
-                p.user_id === participant.user_id ? { ...p, ...participant, is_active: true } : p
+                p.user_id === participant.user_id ? { ...p, ...participant, display_name: displayName, email, is_active: true } : p
               );
             }
-            return [...prev, participant];
+            return [...prev, { ...participant, display_name: displayName, email }];
           });
 
-          // Add system message for join
+          // Skip showing "You joined" message to the current user
+          if (participant.user_id === currentUserId) {
+            console.log('[CollabSession] 📢 Skipping join message for self');
+            return;
+          }
+
+          // Add system message for join (only for OTHER users)
           const joinMessage: SessionHumanMessage = {
             id: `system-join-${participant.user_id}-${Date.now()}`,
             session_id: sessionId,
             user_id: participant.user_id,
-            content: `${participant.display_name || participant.email || 'Someone'} joined the conversation`,
+            content: `${displayName || email || 'Someone'} joined the conversation`,
             message_type: 'system',
             created_at: new Date().toISOString(),
-            user_display_name: participant.display_name,
-            user_email: participant.email,
+            user_display_name: displayName,
+            user_email: email,
           };
+          console.log('[CollabSession] 📢 Adding join system message:', joinMessage.content);
           setMessages((prev) => [...prev, joinMessage]);
         },
-        (participant) => {
-          // On leave
+        async (participant) => {
+          // On leave - called when participant is_active is set to false
+          console.log('[CollabSession] 👋 PARTICIPANT LEFT:', {
+            userId: participant.user_id,
+            displayName: participant.display_name,
+            email: participant.email,
+          });
+          
+          // Fetch the user's profile to get their display name if not available
+          let displayName = participant.display_name;
+          let email = participant.email;
+          
+          if (!displayName && !email) {
+            try {
+              const profile = await getUserProfileById(client, participant.user_id);
+              if (profile) {
+                displayName = profile.displayName;
+                email = profile.email || undefined;
+              }
+            } catch (e) {
+              console.warn('[CollabSession] ⚠️ Failed to fetch participant profile:', e);
+            }
+          }
+          
           setParticipants((prev) =>
             prev.map((p) =>
               p.user_id === participant.user_id ? { ...p, is_active: false } : p
@@ -227,11 +285,11 @@ export function useCollaborativeAgentSession(
             id: `system-leave-${participant.user_id}-${Date.now()}`,
             session_id: sessionId,
             user_id: participant.user_id,
-            content: `${participant.display_name || participant.email || 'Someone'} left the conversation`,
+            content: `${displayName || email || 'Someone'} left the conversation`,
             message_type: 'system',
             created_at: new Date().toISOString(),
-            user_display_name: participant.display_name,
-            user_email: participant.email,
+            user_display_name: displayName,
+            user_email: email,
           };
           setMessages((prev) => [...prev, leaveMessage]);
         }
@@ -242,7 +300,7 @@ export function useCollaborativeAgentSession(
         setCollabSession(session);
       });
     },
-    [client, cleanupSubscriptions]
+    [client, cleanupSubscriptions, authSession?.user?.id]
   );
 
   // ==========================================================================
@@ -424,19 +482,23 @@ export function useCollaborativeAgentSession(
   }, [client, collabSession, isHost, cleanupSubscriptions]);
 
   const sendHumanMessage = useCallback(
-    async (content: string, localMessageId?: string) => {
+    async (content: string, localMessageId?: string, sessionIdOverride?: string) => {
+      // Allow passing session ID override for cases where React state hasn't updated yet
+      const sessionId = sessionIdOverride || collabSession?.id;
+      
       console.log('[CollabSession] sendHumanMessage called:', {
         hasClient: !!client,
         hasSession: !!collabSession,
-        sessionId: collabSession?.id,
+        sessionId,
+        sessionIdOverride,
         hasUser: !!authSession?.user?.id,
         contentPreview: content.slice(0, 50),
       });
       
-      if (!client || !collabSession || !authSession?.user?.id) {
+      if (!client || !sessionId || !authSession?.user?.id) {
         console.warn('[CollabSession] sendHumanMessage skipped - missing:', {
           client: !!client,
-          session: !!collabSession,
+          sessionId: !!sessionId,
           user: !!authSession?.user?.id,
         });
         return;
@@ -444,7 +506,7 @@ export function useCollaborativeAgentSession(
 
       try {
         const isGooseTrigger = containsGooseMention(content);
-        await sendMessage(client, collabSession.id, authSession.user.id, content, {
+        await sendMessage(client, sessionId, authSession.user.id, content, {
           messageType: isGooseTrigger ? 'goose_trigger' : 'user',
           localMessageId,
           userEmail: authSession.user.email,

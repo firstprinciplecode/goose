@@ -203,19 +203,57 @@ function BaseChatContent({
     // Create a set of local message IDs for deduplication
     const localIds = new Set(messages.map(m => m.id));
     
+    // Create a set of local message content signatures for content-based dedup
+    // This catches cases where the message was synced with a different ID
+    const localContentSignatures = new Set(
+      messages.map(m => {
+        const firstContent = m.content?.[0];
+        const text = firstContent && 'text' in firstContent ? firstContent.text : '';
+        // Content signature: role + first 100 chars of content
+        return `${m.role}:${text?.slice(0, 100)}`;
+      })
+    );
+    
     // Convert and filter collaborative messages (avoid duplicates)
     const collabConverted = collab.state.messages
-      .filter(cm => !localIds.has(cm.id) && !localIds.has(cm.local_message_id || ''))
+      .filter(cm => {
+        // Skip if ID matches
+        if (localIds.has(cm.id) || localIds.has(cm.local_message_id || '')) {
+          return false;
+        }
+        
+        // Skip if content matches a local message (same role + similar content)
+        const collabRole = cm.message_type === 'assistant' ? 'assistant' : 'user';
+        const contentSig = `${collabRole}:${cm.content?.slice(0, 100)}`;
+        if (localContentSignatures.has(contentSig)) {
+          console.log('📊 Skipping duplicate collab message (content match):', cm.content?.slice(0, 50));
+          return false;
+        }
+        
+        return true;
+      })
       .map(convertCollabMessage);
 
     // Merge and sort by timestamp
     const allMessages = [...messages, ...collabConverted];
     
-    // Final deduplication pass - remove any duplicates by ID
+    // Final deduplication pass - remove any duplicates by ID or content
     const seenIds = new Set<string>();
+    const seenContent = new Set<string>();
     const dedupedMessages = allMessages.filter(m => {
       if (!m.id || seenIds.has(m.id)) return false;
       seenIds.add(m.id);
+      
+      // Also check content-based dedup for final pass
+      const firstContent = m.content?.[0];
+      const text = firstContent && 'text' in firstContent ? firstContent.text : '';
+      const contentKey = `${m.role}:${text?.slice(0, 100)}`;
+      if (seenContent.has(contentKey)) {
+        console.log('📊 Removing duplicate message in final pass:', text?.slice(0, 50));
+        return false;
+      }
+      seenContent.add(contentKey);
+      
       return true;
     });
     

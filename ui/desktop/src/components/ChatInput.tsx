@@ -1479,18 +1479,31 @@ export default function ChatInput({
                 // Get or create collaborative session
                 let collabSession = await getSessionByGooseId(supabaseClient, sessionId);
                 if (!collabSession) {
+                  // Use the current tab title for the collaborative session
+                  const currentTabState = tabContext.getActiveTabState();
+                  const sessionTitle = currentTabState?.tab?.title && currentTabState.tab.title !== 'New Chat'
+                    ? currentTabState.tab.title
+                    : `Session ${sessionId.slice(0, 8)}`;
+                  
                   collabSession = await createCollaborativeSession(supabaseClient, supabaseSession.user.id, {
                     gooseSessionId: sessionId,
-                    title: `Session ${sessionId.slice(0, 8)}`,
+                    title: sessionTitle,
                     collaborativeMode: true,
                   });
-                  console.log('📝 Created collaborative session:', collabSession?.id);
+                  console.log('📝 Created collaborative session:', collabSession?.id, 'with title:', sessionTitle);
                 }
                 
                 if (collabSession) {
                   // Load the session into the collab hook so the host starts syncing messages
                   await collab.actions.joinSession(collabSession.id);
                   console.log('🔗 Joined collaborative session as host:', collabSession.id);
+                  
+                  // Mark the tab as having an active collaborative session (for UI indicator)
+                  const activeTabState = tabContext.getActiveTabState();
+                  if (activeTabState?.tab?.id) {
+                    tabContext.setTabCollaborative(activeTabState.tab.id, true);
+                    console.log('👥 Marked tab as collaborative:', activeTabState.tab.id);
+                  }
                   
                   // Sync existing messages to Supabase so joinee can see them
                   if (messages.length > 0) {
@@ -1517,11 +1530,16 @@ export default function ChatInput({
 
         // Collaborative sessions: always publish the human message to Supabase.
         // Check both the React state AND our local ref (for same-execution join)
-        const isCollaborativeNow = collab.state.isCollaborative || justJoinedCollabSessionRef.current !== null;
+        const justJoinedSessionId = justJoinedCollabSessionRef.current;
+        const isCollaborativeNow = collab.state.isCollaborative || justJoinedSessionId !== null;
         const localMessageId = `local-${Date.now()}`;
         if (isCollaborativeNow) {
-          console.log('[ChatInput] 📤 Syncing human message to Supabase');
-          await collab.actions.sendHumanMessage(textToSend, localMessageId);
+          console.log('[ChatInput] 📤 Syncing human message to Supabase', { 
+            justJoinedSessionId, 
+            stateSessionId: collab.state.sessionId 
+          });
+          // Pass the session ID override for cases where React state hasn't updated yet
+          await collab.actions.sendHumanMessage(textToSend, localMessageId, justJoinedSessionId || undefined);
         }
         
         // Reset the ref after use
@@ -1542,6 +1560,13 @@ export default function ChatInput({
         if (shouldTriggerAgent && agentTextToSend) {
           handleSubmit(
             new CustomEvent('submit', { detail: { value: agentTextToSend } }) as unknown as React.FormEvent
+          );
+        } else if (isCollaborativeNow && !shouldTriggerAgent) {
+          // For collaborative guests who don't trigger the agent, we still need to add the message locally
+          // so they can see their own message in the chat without waiting for the Supabase roundtrip
+          console.log('[ChatInput] 📝 Collaborative guest message - adding to local messages');
+          handleSubmit(
+            new CustomEvent('submit', { detail: { value: textToSend } }) as unknown as React.FormEvent
           );
         }
 
