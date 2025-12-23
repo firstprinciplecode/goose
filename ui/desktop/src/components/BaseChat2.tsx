@@ -117,6 +117,13 @@ function BaseChatContent({
 
   // Convert Supabase collaborative messages to the local Message format
   const convertCollabMessage = useCallback((msg: SessionHumanMessage): Message => {
+    console.log('🔄 Converting collab message:', {
+      id: msg.id,
+      type: msg.message_type,
+      content: msg.content?.slice(0, 50),
+      created_at: msg.created_at,
+    });
+    
     const isAssistant = msg.message_type === 'assistant';
     const senderLabel = msg.user_display_name || msg.user_email || 'Collaborator';
     
@@ -125,7 +132,7 @@ function BaseChatContent({
       ? msg.content 
       : `[${senderLabel}] ${msg.content}`;
     
-    return {
+    const converted: Message = {
       id: msg.id,
       role: isAssistant ? 'assistant' : 'user',
       created: new Date(msg.created_at).getTime(),
@@ -133,7 +140,17 @@ function BaseChatContent({
         type: 'text',
         text: displayContent,
       }],
-    } as Message;
+    };
+    
+    const firstContent = converted.content?.[0];
+    console.log('✅ Converted to:', {
+      id: converted.id,
+      role: converted.role,
+      created: converted.created,
+      contentLength: firstContent && 'text' in firstContent ? firstContent.text?.length : 0,
+    });
+    
+    return converted;
   }, []);
 
   // Merge local and collaborative messages
@@ -176,6 +193,24 @@ function BaseChatContent({
       total: allMessages.length,
       isCollaborative: collab.state.isCollaborative,
     });
+
+    // Debug: Log first 3 messages in detail
+    if (allMessages.length > 0) {
+      console.log('📜 MERGED MESSAGE DETAILS:', allMessages.slice(0, 3).map(m => {
+        const firstContent = m.content?.[0];
+        const textContent = firstContent && 'text' in firstContent ? firstContent.text : null;
+        return {
+          id: m.id,
+          role: m.role,
+          created: m.created,
+          contentType: firstContent?.type,
+          contentPreview: typeof textContent === 'string' 
+            ? textContent.slice(0, 50) 
+            : 'not a string',
+          hasContent: !!m.content && m.content.length > 0,
+        };
+      }));
+    }
 
     return allMessages;
   }, [messages, collab.state.isCollaborative, collab.state.messages, convertCollabMessage]);
