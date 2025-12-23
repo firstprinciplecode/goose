@@ -185,7 +185,11 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
       console.log('[NotificationDropdown] Calling acceptInvite RPC...');
       const collabSessionId = await acceptInvite(client, invite.id);
       console.log('[NotificationDropdown] ✅ Accepted invite, collab session:', collabSessionId);
-      console.log('[NotificationDropdown] Goose session ID:', invite.goose_session_id);
+      console.log('[NotificationDropdown] Invite details:', {
+        goose_session_id: invite.goose_session_id,
+        session_title: invite.session_title,
+        session_id: invite.session_id,
+      });
 
       // Remove from pending
       setPendingInvites((prev) => prev.filter((p) => p.id !== invite.id));
@@ -194,7 +198,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
       // Open the Goose session in a new tab
       if (invite.goose_session_id) {
         const sessionTitle = invite.session_title || `Collab: ${invite.goose_session_id.slice(0, 8)}`;
-        console.log('[NotificationDropdown] Opening session tab:', invite.goose_session_id, sessionTitle);
+        console.log('[NotificationDropdown] 📂 Opening session tab:', invite.goose_session_id, 'title:', sessionTitle);
         openExistingSession(invite.goose_session_id, sessionTitle);
       } else {
         console.warn('[NotificationDropdown] No goose_session_id in invite, cannot open tab');

@@ -128,7 +128,7 @@ function BaseChatContent({
     return {
       id: msg.id,
       role: isAssistant ? 'assistant' : 'user',
-      created: msg.created_at,
+      created: new Date(msg.created_at).getTime(),
       content: [{
         type: 'text',
         text: displayContent,
@@ -138,10 +138,20 @@ function BaseChatContent({
 
   // Merge local and collaborative messages
   const mergedMessages = useMemo(() => {
+    console.log('📊 MERGE CHECK:', {
+      isCollaborative: collab.state.isCollaborative,
+      collabMessagesCount: collab.state.messages.length,
+      localMessagesCount: messages.length,
+      sessionId,
+    });
+
     // If not in a collaborative session or no collaborative messages, use local messages
     if (!collab.state.isCollaborative || collab.state.messages.length === 0) {
+      console.log('📊 Using LOCAL messages only (collab not active or no collab messages)');
       return messages;
     }
+
+    console.log('📊 MERGING collab + local messages');
 
     // Create a set of local message IDs for deduplication
     const localIds = new Set(messages.map(m => m.id));
@@ -154,8 +164,9 @@ function BaseChatContent({
     // Merge and sort by timestamp
     const allMessages = [...messages, ...collabConverted];
     allMessages.sort((a, b) => {
-      const aTime = new Date(a.created || 0).getTime();
-      const bTime = new Date(b.created || 0).getTime();
+      // created is a timestamp (number) - treat 0 or undefined as epoch
+      const aTime = typeof a.created === 'number' ? a.created : 0;
+      const bTime = typeof b.created === 'number' ? b.created : 0;
       return aTime - bTime;
     });
 
