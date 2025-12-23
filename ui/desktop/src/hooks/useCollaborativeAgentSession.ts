@@ -468,6 +468,16 @@ export function useCollaborativeAgentSession(
 
       console.log('[CollabSession] 📤 Syncing', msgs.length, 'existing messages to session:', sessionId);
 
+      // Get existing messages to check for duplicates
+      const existingMessages = await getMessages(client, sessionId, { limit: 100 });
+      const existingLocalIds = new Set(existingMessages.map(m => m.local_message_id).filter(Boolean));
+      const existingContent = new Set(existingMessages.map(m => `${m.message_type}:${m.content.slice(0, 100)}`));
+      
+      console.log('[CollabSession] Found', existingMessages.length, 'existing messages, checking for duplicates');
+
+      let synced = 0;
+      let skipped = 0;
+      
       for (const msg of msgs) {
         // Extract text content from the message
         let textContent = '';
@@ -484,6 +494,21 @@ export function useCollaborativeAgentSession(
 
         const messageType = msg.role === 'assistant' ? 'assistant' : 'user';
         
+        // Skip if this local message ID already exists
+        if (msg.id && existingLocalIds.has(msg.id)) {
+          console.log('[CollabSession] ⏭️ Skipping (local_id exists):', messageType, textContent.slice(0, 30));
+          skipped++;
+          continue;
+        }
+        
+        // Skip if content already exists (prevent duplicate Goose responses)
+        const contentKey = `${messageType}:${textContent.slice(0, 100)}`;
+        if (existingContent.has(contentKey)) {
+          console.log('[CollabSession] ⏭️ Skipping (content exists):', messageType, textContent.slice(0, 30));
+          skipped++;
+          continue;
+        }
+        
         try {
           await sendMessage(client, sessionId, authSession.user.id, textContent, {
             messageType,
@@ -491,6 +516,10 @@ export function useCollaborativeAgentSession(
             userEmail: authSession.user.email,
           });
           console.log('[CollabSession] ✅ Synced message:', messageType, textContent.slice(0, 50));
+          synced++;
+          // Add to existing sets to prevent duplicates within this sync batch
+          if (msg.id) existingLocalIds.add(msg.id);
+          existingContent.add(contentKey);
         } catch (e: any) {
           console.error('[CollabSession] Failed to sync message:', {
             error: e?.message,
@@ -503,7 +532,7 @@ export function useCollaborativeAgentSession(
         }
       }
 
-      console.log('[CollabSession] ✅ Finished syncing existing messages');
+      console.log('[CollabSession] ✅ Finished syncing:', { synced, skipped, total: msgs.length });
     },
     [client, authSession?.user?.id, authSession?.user?.email]
   );
