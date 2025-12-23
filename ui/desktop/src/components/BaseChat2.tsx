@@ -482,7 +482,7 @@ function BaseChatContent({
 
             {/* Messages or Popular Topics */}
             {
-              loadingChat ? null : messages.length > 0 ||
+              loadingChat ? null : mergedMessages.length > 0 ||
                 (recipe && !hasNotAcceptedRecipe && hasStartedUsingRecipe) ? (
                 <>
                   {/* Spacer above first message */}
