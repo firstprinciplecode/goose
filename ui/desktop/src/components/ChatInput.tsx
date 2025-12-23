@@ -1481,9 +1481,16 @@ export default function ChatInput({
                 if (!collabSession) {
                   // Use the current tab title for the collaborative session
                   const currentTabState = tabContext.getActiveTabState();
-                  const sessionTitle = currentTabState?.tab?.title && currentTabState.tab.title !== 'New Chat'
-                    ? currentTabState.tab.title
+                  const tabTitle = currentTabState?.tab?.title;
+                  const sessionTitle = tabTitle && tabTitle !== 'New Chat' && tabTitle !== 'Loading...'
+                    ? tabTitle
                     : `Session ${sessionId.slice(0, 8)}`;
+                  
+                  console.log('📝 Creating collaborative session with title:', {
+                    tabTitle,
+                    sessionTitle,
+                    tabId: currentTabState?.tab?.id,
+                  });
                   
                   collabSession = await createCollaborativeSession(supabaseClient, supabaseSession.user.id, {
                     gooseSessionId: sessionId,

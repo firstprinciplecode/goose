@@ -152,11 +152,15 @@ function BaseChatContent({
       displayContent = msg.content;
     }
     
+    // Convert to seconds to match local message format (createUserMessage uses Math.floor(Date.now() / 1000))
+    const createdAtMs = new Date(msg.created_at).getTime();
+    const createdAtSeconds = Math.floor(createdAtMs / 1000);
+    
     const converted: Message = {
       id: msg.id,
       // System messages show as user role (will be styled differently via content)
       role: isAssistant ? 'assistant' : 'user',
-      created: new Date(msg.created_at).getTime(),
+      created: createdAtSeconds,
       content: [{
         type: 'text',
         text: displayContent,
