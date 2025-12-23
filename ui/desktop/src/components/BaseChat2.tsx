@@ -319,7 +319,9 @@ function BaseChatContent({
     }
 
     return dedupedMessages;
-  }, [messages, collab.state.isCollaborative, collab.state.messages, convertCollabMessage]);
+  // Note: Using collab.state.messages.length as additional dependency to ensure
+  // React detects changes even if the array reference comparison fails
+  }, [messages, collab.state.isCollaborative, collab.state.messages, collab.state.messages.length, convertCollabMessage]);
 
   // Auto-send @goose off for Matrix chats on initial load
   const hasAutoDisabledGoose = useRef(false);

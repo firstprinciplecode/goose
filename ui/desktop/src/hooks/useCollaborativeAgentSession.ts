@@ -765,13 +765,32 @@ export function useCollaborativeAgentSession(
   // ==========================================================================
   // Return
   // ==========================================================================
-  const state: CollaborativeSessionState = useMemo(
+  // Create state object directly (not memoized) to ensure component always gets fresh values
+  // Previously used useMemo which caused stale values when messages updated
+  console.log('[CollabSession] 🔶 Creating state object:', {
+    messagesCount: messages.length,
+    isCollaborative,
+    sessionId: collabSession?.id,
+  });
+  
+  const state: CollaborativeSessionState = {
+    session: collabSession,
+    participants,
+    messages,
+    isCollaborative,
+    isHost,
+    collaborativeMode,
+    isLoading,
+    isLoadingMessages,
+    error,
+    messagesCursor,
+    currentUserId: authSession?.user?.id || null,
+  };
+  
+  // Keep this useMemo definition for backward compatibility but it's no longer used
+  // TODO: Remove this after confirming the fix works
+  const _unusedState: CollaborativeSessionState = useMemo(
     () => {
-      console.log('[CollabSession] 🔶 State useMemo recomputing:', {
-        messagesCount: messages.length,
-        isCollaborative,
-        sessionId: collabSession?.id,
-      });
       return {
         session: collabSession,
         participants,
