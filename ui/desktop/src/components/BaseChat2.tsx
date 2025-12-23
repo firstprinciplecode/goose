@@ -129,15 +129,24 @@ function BaseChatContent({
     });
     
     const isAssistant = msg.message_type === 'assistant';
+    const isSystem = msg.message_type === 'system';
     const senderLabel = msg.user_display_name || msg.user_email || 'Collaborator';
     
-    // For user messages from collaborators, prefix with their name
-    const displayContent = isAssistant 
-      ? msg.content 
-      : `[${senderLabel}] ${msg.content}`;
+    // Format content based on message type
+    let displayContent: string;
+    if (isAssistant) {
+      displayContent = msg.content;
+    } else if (isSystem) {
+      // System messages (like "X joined") get italic styling with info prefix
+      displayContent = `*${msg.content}*`;
+    } else {
+      // Regular user messages from collaborators get prefixed with sender name
+      displayContent = `[${senderLabel}] ${msg.content}`;
+    }
     
     const converted: Message = {
       id: msg.id,
+      // System messages show as user role (will be styled differently via content)
       role: isAssistant ? 'assistant' : 'user',
       created: new Date(msg.created_at).getTime(),
       content: [{
