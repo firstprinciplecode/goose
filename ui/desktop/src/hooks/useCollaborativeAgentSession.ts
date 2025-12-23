@@ -178,8 +178,12 @@ export function useCollaborativeAgentSession(
       cleanupSubscriptions();
 
       // Subscribe to messages
+      // Capture gooseSessionId for logging (closure)
+      const gooseId = gooseSessionId;
       messageSubRef.current = subscribeToMessages(client, sessionId, (msg) => {
         console.log('[CollabSession] 📩 RECEIVED MESSAGE via subscription:', {
+          gooseSessionId: gooseId,
+          collabSessionId: sessionId,
           id: msg.id,
           content: msg.content?.slice(0, 50),
           user_id: msg.user_id,
@@ -187,7 +191,10 @@ export function useCollaborativeAgentSession(
           created_at: msg.created_at,
         });
         setMessages((prev) => {
-          console.log('[CollabSession] 🔄 setMessages callback running, prev.length:', prev.length);
+          console.log('[CollabSession] 🔄 setMessages callback running:', {
+            gooseSessionId: gooseId,
+            prevLength: prev.length,
+          });
           // Deduplicate
           if (prev.some((m) => m.id === msg.id)) {
             console.log('[CollabSession] ⏭️ Skipping duplicate message:', msg.id);
@@ -195,6 +202,7 @@ export function useCollaborativeAgentSession(
           }
           const newMessages = [...prev, msg];
           console.log('[CollabSession] ✅ Adding new message to state:', {
+            gooseSessionId: gooseId,
             messageId: msg.id,
             content: msg.content?.slice(0, 30),
             newTotal: newMessages.length,
@@ -317,7 +325,7 @@ export function useCollaborativeAgentSession(
         setCollabSession(session);
       });
     },
-    [client, cleanupSubscriptions, authSession?.user?.id]
+    [client, cleanupSubscriptions, authSession?.user?.id, gooseSessionId]
   );
 
   // ==========================================================================
@@ -768,9 +776,10 @@ export function useCollaborativeAgentSession(
   // Create state object directly (not memoized) to ensure component always gets fresh values
   // Previously used useMemo which caused stale values when messages updated
   console.log('[CollabSession] 🔶 Creating state object:', {
+    gooseSessionId,
     messagesCount: messages.length,
     isCollaborative,
-    sessionId: collabSession?.id,
+    collabSessionId: collabSession?.id,
   });
   
   const state: CollaborativeSessionState = {
