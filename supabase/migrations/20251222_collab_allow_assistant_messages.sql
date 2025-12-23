@@ -6,7 +6,8 @@
 
 begin;
 
--- Expand allowed message_type values (idempotent)
+-- Expand allowed message_type values (idempotent)ue
+
 do $$
 begin
   -- Drop and recreate constraint to include 'assistant'
@@ -14,7 +15,7 @@ begin
     select 1
     from pg_constraint
     where conname = 'session_human_messages_message_type_check'
-      and conrelid = 'public.session_human_messages'::regclass
+      and conrelid = 'public.session_human_messages'::regclass 
   ) then
     alter table public.session_human_messages
       drop constraint session_human_messages_message_type_check;

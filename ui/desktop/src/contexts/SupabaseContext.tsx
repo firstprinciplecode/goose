@@ -54,7 +54,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!client || !session?.user) return;
     const { data, error } = await client
       .from('profiles')
-      .select('user_id, email, display_name, avatar_url')
+      .select('user_id, email, display_name')
       .eq('user_id', session.user.id)
       .maybeSingle();
     if (error) {

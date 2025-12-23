@@ -471,8 +471,16 @@ export function useCollaborativeAgentSession(
             localMessageId: msg.id,
             userEmail: authSession.user.email,
           });
-        } catch (e) {
-          console.error('[CollabSession] Failed to sync message:', e);
+          console.log('[CollabSession] ✅ Synced message:', messageType, textContent.slice(0, 50));
+        } catch (e: any) {
+          console.error('[CollabSession] Failed to sync message:', {
+            error: e?.message,
+            code: e?.code,
+            details: e?.details,
+            hint: e?.hint,
+            messageType,
+            textLength: textContent.length,
+          });
         }
       }
 
