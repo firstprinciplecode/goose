@@ -98,6 +98,7 @@ export async function createCollaborativeSession(
       host_user_id: hostUserId,
       title: options.title || `Session ${options.gooseSessionId.slice(0, 8)}`,
       collaborative_mode: options.collaborativeMode ?? true,
+      is_active: true, // Explicitly set to active
     })
     .select()
     .single();

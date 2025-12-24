@@ -27,6 +27,7 @@ import ParameterInputModal from './ParameterInputModal';
 import ParticipantsBar from './ParticipantsBar';
 import PendingInvitesInHistory from './PendingInvitesInHistory';
 import { useComments } from '../hooks/useComments';
+import { useTabContext } from '../contexts/TabContext';
 
 interface BaseChatProps {
   setChat?: (chat: ChatType) => void; // Made optional for inactive tabs
@@ -118,6 +119,9 @@ function BaseChatContent({
 
   // Collaborative session integration
   const collab = useCollaborativeAgentSession(sessionId);
+  
+  // Get tab context for accessing tab title
+  const tabContext = useTabContext();
   
   // Debug: log collab state on every render
   console.log('🔷 BaseChat2 RENDER - collab state:', {
@@ -404,28 +408,54 @@ function BaseChatContent({
 
   // ==========================================================================
   // Sync session title to collaborative session
-  // When the local session title changes, update the collab session so guests see it
+  // When the local tab title changes, update the collab session so guests see it
+  // We use the tab title (which is updated from the first message) rather than
+  // session?.description (which comes from backend and may be stale)
   // ==========================================================================
   const lastSyncedTitleRef = useRef<string | null>(null);
   
+  // Get the current tab's title from TabContext
+  const currentTabTitle = useMemo(() => {
+    if (!tabId) return null;
+    const tabState = tabContext.tabStates.find(ts => ts.tab.id === tabId);
+    return tabState?.tab?.title || null;
+  }, [tabId, tabContext.tabStates]);
+  
   useEffect(() => {
-    // Only sync if we're the host of a collaborative session
-    if (!collab.state.isCollaborative || !collab.state.isHost) return;
+    console.log('🏷️ Title sync effect - checking conditions:', {
+      currentTabTitle,
+      isCollaborative: collab.state.isCollaborative,
+      isHost: collab.state.isHost,
+      lastSyncedTitle: lastSyncedTitleRef.current,
+      sessionId: collab.state.session?.id,
+    });
     
-    // Get the actual session title/description
-    const title = session?.description;
-    if (!title || title === 'New Chat' || title === 'Loading...') return;
+    // Only sync if we're the host of a collaborative session
+    if (!collab.state.isCollaborative || !collab.state.isHost) {
+      console.log('🏷️ Title sync skipped: not collaborative or not host');
+      return;
+    }
+    
+    // Get the actual tab title - this is the source of truth for the UI
+    const title = currentTabTitle;
+    if (!title || title === 'New Chat' || title === 'Loading...') {
+      console.log('🏷️ Title sync skipped: no valid title', { title });
+      return;
+    }
     
     // Only sync if the title has changed
-    if (title === lastSyncedTitleRef.current) return;
+    if (title === lastSyncedTitleRef.current) {
+      console.log('🏷️ Title sync skipped: title unchanged');
+      return;
+    }
     
-    console.log('📝 Syncing session title to collaborative session:', title);
+    console.log('🏷️ Syncing tab title to collaborative session:', title);
     lastSyncedTitleRef.current = title;
     
     collab.actions.updateTitle(title).catch((e) => {
       console.error('❌ Failed to sync session title:', e);
     });
-  }, [session?.description, collab.state.isCollaborative, collab.state.isHost, collab.actions]);
+  }, [currentTabTitle, collab.state.isCollaborative, collab.state.isHost, collab.actions, collab.state.session?.id]);
 
   const recipe = session?.recipe;
 
