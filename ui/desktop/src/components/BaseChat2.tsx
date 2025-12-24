@@ -457,6 +457,37 @@ function BaseChatContent({
     });
   }, [currentTabTitle, collab.state.isCollaborative, collab.state.isHost, collab.actions, collab.state.session?.id]);
 
+  // ==========================================================================
+  // For guests: Update tab title when collab session title becomes available
+  // This handles the case where the tab was created before the session was loaded
+  // ==========================================================================
+  useEffect(() => {
+    // Only for collaborative sessions where we're NOT the host (guests)
+    if (!collab.state.isCollaborative || collab.state.isHost) return;
+    
+    const collabTitle = collab.state.session?.title;
+    if (!collabTitle) return;
+    
+    // Check if current tab has a generic/placeholder title that should be updated
+    const shouldUpdateTab = !currentTabTitle || 
+      currentTabTitle === 'New Chat' || 
+      currentTabTitle === 'Loading...' ||
+      currentTabTitle === 'Chat';
+    
+    if (shouldUpdateTab && tabId) {
+      console.log('🏷️ Guest: Updating tab title from collab session:', collabTitle);
+      // Find and update the tab title in TabContext
+      const currentTab = tabContext.tabStates.find(ts => ts.tab.id === tabId);
+      if (currentTab && currentTab.tab.title !== collabTitle) {
+        // Use the tab context's method to update the title
+        tabContext.handleChatUpdate(tabId, {
+          ...currentTab.chat,
+          title: collabTitle,
+        });
+      }
+    }
+  }, [collab.state.isCollaborative, collab.state.isHost, collab.state.session?.title, currentTabTitle, tabId, tabContext]);
+
   const recipe = session?.recipe;
 
   useEffect(() => {
@@ -549,6 +580,37 @@ function BaseChatContent({
     sessionDescription: session?.description
   });
 
+  // Determine the best title to use
+  // Priority: collab session title > meaningful tab title > backend session > fallback
+  const chatTitle = useMemo(() => {
+    // For collaborative sessions, always prefer the collab session title
+    // This ensures guests see the same title as the host
+    if (collab.state.isCollaborative && collab.state.session?.title) {
+      console.log('🏷️ Using collab session title:', collab.state.session.title);
+      return collab.state.session.title;
+    }
+    
+    // Check if current tab has a meaningful title (not a pure placeholder)
+    // Note: "New session N" is acceptable as it comes from the backend
+    const isPurePlaceholder = !currentTabTitle || 
+      currentTabTitle === 'New Chat' || 
+      currentTabTitle === 'Loading...' ||
+      currentTabTitle === 'Chat';
+    
+    // If tab has a title that isn't a pure placeholder, use it
+    if (!isPurePlaceholder) {
+      return currentTabTitle;
+    }
+    
+    // Fall back to backend session description
+    if (session?.description) {
+      return session.description;
+    }
+    
+    // Final fallback
+    return mergedMessages.length > 0 ? 'Chat' : 'New Chat';
+  }, [currentTabTitle, collab.state.isCollaborative, collab.state.session?.title, session?.description, mergedMessages.length]);
+
   // Memoize the chat object to prevent infinite re-renders
   const chat: ChatType = useMemo(() => ({
     messageHistoryIndex: 0,
@@ -556,8 +618,8 @@ function BaseChatContent({
     recipe,
     sessionId: session?.id || sessionId, // Use actual session ID if available
     name: (session as any)?.name || 'No Session',
-    title: session?.description || (mergedMessages.length > 0 ? 'Chat' : 'New Chat'),
-  }), [mergedMessages, recipe, session?.id, sessionId, session?.description]);
+    title: chatTitle,
+  }), [mergedMessages, recipe, session?.id, sessionId, chatTitle]);
 
   // Update parent only when session ID or title changes (to avoid infinite loops)
   // Only call setChat if it's provided (active tabs)
