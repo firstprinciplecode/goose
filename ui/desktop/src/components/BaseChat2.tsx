@@ -466,7 +466,7 @@ function BaseChatContent({
     if (!collab.state.isCollaborative || collab.state.isHost) return;
     
     const collabTitle = collab.state.session?.title;
-    if (!collabTitle) return;
+    if (!collabTitle || !tabId) return;
     
     // Check if current tab has a generic/placeholder title that should be updated
     const shouldUpdateTab = !currentTabTitle || 
@@ -474,17 +474,10 @@ function BaseChatContent({
       currentTabTitle === 'Loading...' ||
       currentTabTitle === 'Chat';
     
-    if (shouldUpdateTab && tabId) {
+    if (shouldUpdateTab && currentTabTitle !== collabTitle) {
       console.log('🏷️ Guest: Updating tab title from collab session:', collabTitle);
-      // Find and update the tab title in TabContext
-      const currentTab = tabContext.tabStates.find(ts => ts.tab.id === tabId);
-      if (currentTab && currentTab.tab.title !== collabTitle) {
-        // Use the tab context's method to update the title
-        tabContext.handleChatUpdate(tabId, {
-          ...currentTab.chat,
-          title: collabTitle,
-        });
-      }
+      // Use the new updateTabTitle method to avoid overwriting messages
+      tabContext.updateTabTitle(tabId, collabTitle);
     }
   }, [collab.state.isCollaborative, collab.state.isHost, collab.state.session?.title, currentTabTitle, tabId, tabContext]);
 

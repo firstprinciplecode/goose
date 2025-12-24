@@ -28,6 +28,8 @@ interface TabContextType {
   updateTabTitleFromMessage: (tabId: string, message: string | any) => Promise<void>;
   openExistingSession: (sessionId: string, title?: string, isCollaborativeJoin?: boolean) => void;
   updateSessionId: (tabId: string, newSessionId: string) => void;
+  // Tab title update (without touching messages)
+  updateTabTitle: (tabId: string, title: string) => void;
   // Collaborative session methods
   setTabCollaborative: (tabId: string, isCollaborative: boolean) => void;
   // Matrix-specific methods
@@ -718,6 +720,21 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     ));
   }, []);
 
+  // Update just the tab title without affecting messages or other state
+  const updateTabTitle = useCallback((tabId: string, title: string) => {
+    console.log('🏷️ Updating tab title:', { tabId, title });
+    
+    setTabStates(prev => prev.map(ts => 
+      ts.tab.id === tabId 
+        ? { 
+            ...ts, 
+            tab: { ...ts.tab, title },
+            chat: { ...ts.chat, title }
+          }
+        : ts
+    ));
+  }, []);
+
   // Mark a tab as having an active collaborative session
   const setTabCollaborative = useCallback((tabId: string, isCollaborative: boolean) => {
     console.log('👥 Setting tab collaborative status:', { tabId, isCollaborative });
@@ -1155,6 +1172,8 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     updateTabTitleFromMessage,
     openExistingSession,
     updateSessionId,
+    // Tab title update (without touching messages)
+    updateTabTitle,
     // Collaborative session methods
     setTabCollaborative,
     // Matrix-specific methods
