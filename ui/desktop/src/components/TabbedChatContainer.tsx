@@ -53,7 +53,16 @@ export const TabbedChatContainer: React.FC<TabbedChatContainerProps> = ({
   const handleMessageSubmitWrapper = useCallback(async (message: string, tabId: string) => {
     // Find the tab state to check if this is the first message
     const tabState = tabStates.find(ts => ts.tab.id === tabId);
-    const isFirstMessage = tabState && tabState.chat.messages.length === 0 && tabState.tab.title === 'New Chat';
+    
+    // Check if title is a generic/placeholder title that should be updated
+    const hasGenericTitle = tabState && (
+      tabState.tab.title === 'New Chat' ||
+      tabState.tab.title === 'Loading...' ||
+      tabState.tab.title.startsWith('New session') ||
+      tabState.tab.title.startsWith('Session ')
+    );
+    
+    const isFirstMessage = tabState && tabState.chat.messages.length === 0 && hasGenericTitle;
     
     // Handle the message submission
     contextHandleMessageSubmit(message, tabId);
@@ -61,7 +70,7 @@ export const TabbedChatContainer: React.FC<TabbedChatContainerProps> = ({
     
     // Update tab title from first message
     if (isFirstMessage && message.trim()) {
-      console.log('🏷️ First message detected, updating tab title');
+      console.log('🏷️ First message detected, updating tab title from:', tabState.tab.title, 'to message-based title');
       try {
         await updateTabTitleFromMessage(tabId, message);
       } catch (error) {
