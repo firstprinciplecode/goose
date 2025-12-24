@@ -16,6 +16,7 @@ import {
   getSessionByGooseId,
   getSessionById,
   setCollaborativeMode,
+  updateSessionTitle,
   endSession,
   getParticipants,
   leaveSession,
@@ -92,6 +93,8 @@ export interface CollaborativeSessionActions {
   refresh: () => Promise<void>;
   /** Sync existing messages to the collaborative session (for backfilling on session creation) */
   syncExistingMessages: (sessionId: string, messages: Array<{ role: string; content: unknown; id?: string; created?: number }>) => Promise<void>;
+  /** Update the session title */
+  updateTitle: (title: string) => Promise<void>;
 }
 
 export interface UseCollaborativeAgentSessionReturn {
@@ -651,6 +654,23 @@ export function useCollaborativeAgentSession(
     [client, authSession?.user?.id, authSession?.user?.email]
   );
 
+  // Update the collaborative session title (host only)
+  const updateTitle = useCallback(async (title: string) => {
+    if (!client || !collabSession || !isHost) {
+      console.log('[CollabSession] Cannot update title: not host or no session');
+      return;
+    }
+
+    try {
+      console.log('[CollabSession] 📝 Updating session title:', title);
+      await updateSessionTitle(client, collabSession.id, title);
+      console.log('[CollabSession] ✅ Session title updated');
+    } catch (e) {
+      console.error('[CollabSession] ❌ Failed to update session title:', e);
+      setError(getErrorMessage(e));
+    }
+  }, [client, collabSession, isHost]);
+
   const toggleCollaborativeMode = useCallback(async () => {
     if (!client || !collabSession || !isHost) return;
 
@@ -771,6 +791,28 @@ export function useCollaborativeAgentSession(
   }, [cleanupSubscriptions]);
 
   // ==========================================================================
+  // Auto-toggle collaborative mode based on active guests
+  // When all guests leave, switch back to solo mode (Goose responds to all messages)
+  // ==========================================================================
+  useEffect(() => {
+    // Only the host can toggle collaborative mode
+    if (!client || !collabSession || !isHost || !collaborativeMode) return;
+    
+    // Check if there are any active guests (participants other than the host)
+    const activeGuests = participants.filter(
+      p => p.is_active && p.user_id !== authSession?.user?.id
+    );
+    
+    if (activeGuests.length === 0) {
+      console.log('[CollabSession] 👋 All guests left - switching back to solo mode');
+      // Toggle off collaborative mode so Goose responds to all messages again
+      setCollaborativeMode(client, collabSession.id, false).catch((e) => {
+        console.error('[CollabSession] ❌ Failed to disable collaborative mode:', e);
+      });
+    }
+  }, [client, collabSession, isHost, collaborativeMode, participants, authSession?.user?.id]);
+
+  // ==========================================================================
   // Return
   // ==========================================================================
   // Create state object directly (not memoized) to ensure component always gets fresh values
@@ -839,6 +881,7 @@ export function useCollaborativeAgentSession(
       sendHumanMessage,
       sendAssistantMessage,
       syncExistingMessages,
+      updateTitle,
       toggleCollaborativeMode,
       createInviteLink,
       loadOlderMessages,
@@ -856,6 +899,7 @@ export function useCollaborativeAgentSession(
       sendHumanMessage,
       sendAssistantMessage,
       syncExistingMessages,
+      updateTitle,
       toggleCollaborativeMode,
       createInviteLink,
       loadOlderMessages,

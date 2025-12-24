@@ -123,7 +123,8 @@ function BaseChatContent({
   console.log('🔷 BaseChat2 RENDER - collab state:', {
     collabMessagesCount: collab.state.messages.length,
     isCollaborative: collab.state.isCollaborative,
-    sessionId: collab.state.sessionId,
+    collabSessionId: collab.state.session?.id,
+    participantsCount: collab.state.participants.length,
   });
 
   // Convert Supabase collaborative messages to the local Message format
@@ -194,134 +195,123 @@ function BaseChatContent({
     return converted;
   }, [collab.state.currentUserId]);
 
-  // Merge local and collaborative messages
+  // Determine which messages to display based on collaboration mode
+  // In collab mode: Supabase is the source of truth (Teams-like)
+  // In solo mode: Local Goose session is the source
   const mergedMessages = useMemo(() => {
-    console.log('📊 MERGE CHECK:', {
+    // Check if we have active participants (more than just the host)
+    const activeParticipants = collab.state.participants.filter(p => p.is_active);
+    const hasActiveGuest = activeParticipants.length > 1; // More than just the host
+    
+    console.log('📊 MESSAGE SOURCE CHECK:', {
       isCollaborative: collab.state.isCollaborative,
       collabMessagesCount: collab.state.messages.length,
       localMessagesCount: messages.length,
-      sessionId,
-      collabSessionId: collab.state.session?.id,
+      activeParticipants: activeParticipants.length,
+      hasActiveGuest,
       isHost: collab.state.isHost,
+      sessionId,
     });
 
-    // If not in a collaborative session or no collaborative messages, use local messages
+    // SOLO MODE: Not in collaborative session, or no collab messages yet
+    // Use local Goose messages
     if (!collab.state.isCollaborative || collab.state.messages.length === 0) {
-      console.log('📊 Using LOCAL messages only:', {
-        reason: !collab.state.isCollaborative ? 'isCollaborative=false' : 'no collab messages',
-        collabSessionExists: !!collab.state.session,
-        collabSessionIsActive: collab.state.session?.is_active,
-      });
+      console.log('📊 SOLO MODE: Using local Goose messages');
       return messages;
     }
 
-    console.log('📊 MERGING collab + local messages');
-
-    // Create a set of local message IDs for deduplication
-    const localIds = new Set(messages.map(m => m.id));
+    // COLLAB MODE: Use Supabase messages as the ONLY source of truth
+    // This is like Teams channels - everyone sees the same messages from Supabase
+    console.log('📊 COLLAB MODE: Using Supabase messages as source of truth');
     
-    // Create a set of local message content signatures for content-based dedup
-    // This catches cases where the message was synced with a different ID
-    const localContentSignatures = new Set(
-      messages.map(m => {
-        const firstContent = m.content?.[0];
-        const text = firstContent && 'text' in firstContent ? firstContent.text : '';
-        // Content signature: role + first 100 chars of content
-        return `${m.role}:${text?.slice(0, 100)}`;
-      })
-    );
+    // Convert all collab messages to the Message format
+    const collabConverted = collab.state.messages.map(convertCollabMessage);
     
-    console.log('📊 Local content signatures:', Array.from(localContentSignatures));
-    
-    // Convert and filter collaborative messages (avoid duplicates)
-    let includedCount = 0;
-    let skippedCount = 0;
-    const collabConverted = collab.state.messages
-      .filter(cm => {
-        // Skip if ID matches
-        if (localIds.has(cm.id) || localIds.has(cm.local_message_id || '')) {
-          console.log('📊 Skipping collab message (ID match):', cm.id);
-          skippedCount++;
-          return false;
-        }
-        
-        // Skip if content matches a local message (same role + similar content)
-        const collabRole = cm.message_type === 'assistant' ? 'assistant' : 'user';
-        const contentSig = `${collabRole}:${cm.content?.slice(0, 100)}`;
-        if (localContentSignatures.has(contentSig)) {
-          console.log('📊 Skipping collab message (content match):', cm.content?.slice(0, 50));
-          skippedCount++;
-          return false;
-        }
-        
-        console.log('📊 Including collab message:', cm.content?.slice(0, 50));
-        includedCount++;
-        return true;
-      })
-      .map(convertCollabMessage);
-    
-    console.log('📊 Collab filter results:', { includedCount, skippedCount, totalCollab: collab.state.messages.length });
-
-    // Merge and sort by timestamp
-    const allMessages = [...messages, ...collabConverted];
-    
-    // Final deduplication pass - remove any duplicates by ID or content
-    const seenIds = new Set<string>();
-    const seenContent = new Set<string>();
-    const dedupedMessages = allMessages.filter(m => {
-      if (!m.id || seenIds.has(m.id)) return false;
-      seenIds.add(m.id);
-      
-      // Also check content-based dedup for final pass
-      const firstContent = m.content?.[0];
-      const text = firstContent && 'text' in firstContent ? firstContent.text : '';
-      const contentKey = `${m.role}:${text?.slice(0, 100)}`;
-      if (seenContent.has(contentKey)) {
-        console.log('📊 Removing duplicate message in final pass:', text?.slice(0, 50));
-        return false;
-      }
-      seenContent.add(contentKey);
-      
-      return true;
-    });
-    
-    dedupedMessages.sort((a, b) => {
-      // created is a timestamp (number) - treat 0 or undefined as epoch
+    // Sort by timestamp
+    collabConverted.sort((a, b) => {
       const aTime = typeof a.created === 'number' ? a.created : 0;
       const bTime = typeof b.created === 'number' ? b.created : 0;
       return aTime - bTime;
     });
 
-    console.log('[BaseChat2] Merged messages:', {
-      local: messages.length,
-      collab: collabConverted.length,
-      beforeDedup: allMessages.length,
-      afterDedup: dedupedMessages.length,
-      isCollaborative: collab.state.isCollaborative,
+    console.log('📊 COLLAB MODE result:', {
+      totalMessages: collabConverted.length,
+      firstMessage: collabConverted[0]?.id,
+      lastMessage: collabConverted[collabConverted.length - 1]?.id,
     });
 
-    // Debug: Log first 3 messages in detail
-    if (dedupedMessages.length > 0) {
-      console.log('📜 MERGED MESSAGE DETAILS:', dedupedMessages.slice(0, 3).map(m => {
-        const firstContent = m.content?.[0];
-        const textContent = firstContent && 'text' in firstContent ? firstContent.text : null;
-        return {
-          id: m.id,
-          role: m.role,
-          created: m.created,
-          contentType: firstContent?.type,
-          contentPreview: typeof textContent === 'string' 
-            ? textContent.slice(0, 50) 
-            : 'not a string',
-          hasContent: !!m.content && m.content.length > 0,
-        };
-      }));
-    }
+    return collabConverted;
+  }, [messages, collab.state.isCollaborative, collab.state.messages, collab.state.participants, convertCollabMessage]);
 
-    return dedupedMessages;
-  // Note: Using collab.state.messages.length as additional dependency to ensure
-  // React detects changes even if the array reference comparison fails
-  }, [messages, collab.state.isCollaborative, collab.state.messages, collab.state.messages.length, convertCollabMessage]);
+  // ==========================================================================
+  // AI Context Sync: Mirror Supabase messages to local Goose backend
+  // This ensures Goose has full conversation context when @mentioned
+  // ==========================================================================
+  const syncedMessageIdsRef = useRef<Set<string>>(new Set());
+  
+  useEffect(() => {
+    // Only sync when in collaborative mode with messages
+    if (!collab.state.isCollaborative || collab.state.messages.length === 0) {
+      return;
+    }
+    
+    // Find messages that haven't been synced yet
+    const unsyncedMessages = collab.state.messages.filter(
+      msg => !syncedMessageIdsRef.current.has(msg.id)
+    );
+    
+    if (unsyncedMessages.length === 0) {
+      return;
+    }
+    
+    console.log('🔄 Syncing collab messages to Goose backend for AI context:', {
+      unsyncedCount: unsyncedMessages.length,
+      sessionId,
+    });
+    
+    // Sync messages to the Goose backend
+    const syncToBackend = async () => {
+      try {
+        const { replyHandler } = await import('../api');
+        
+        // Convert Supabase messages to the format expected by the backend
+        const backendMessages = unsyncedMessages.map(msg => ({
+          id: msg.id,
+          role: msg.message_type === 'assistant' ? 'assistant' : 'user',
+          content: [{
+            type: 'text' as const,
+            text: msg.content,
+          }],
+          created: Math.floor(new Date(msg.created_at).getTime() / 1000),
+        }));
+        
+        // Use replyHandler to sync messages to the backend session
+        await replyHandler({
+          body: {
+            session_id: sessionId,
+            messages: backendMessages,
+          },
+          throwOnError: false,
+        });
+        
+        // Mark these messages as synced
+        unsyncedMessages.forEach(msg => {
+          syncedMessageIdsRef.current.add(msg.id);
+        });
+        
+        console.log('✅ Synced collab messages to Goose backend:', unsyncedMessages.length);
+      } catch (error) {
+        console.error('❌ Failed to sync collab messages to Goose backend:', error);
+      }
+    };
+    
+    syncToBackend();
+  }, [collab.state.isCollaborative, collab.state.messages, sessionId]);
+  
+  // Reset synced IDs when session changes
+  useEffect(() => {
+    syncedMessageIdsRef.current.clear();
+  }, [sessionId]);
 
   // Auto-send @goose off for Matrix chats on initial load
   const hasAutoDisabledGoose = useRef(false);
@@ -411,6 +401,31 @@ function BaseChatContent({
     localOutputTokens: 0,
     session,
   });
+
+  // ==========================================================================
+  // Sync session title to collaborative session
+  // When the local session title changes, update the collab session so guests see it
+  // ==========================================================================
+  const lastSyncedTitleRef = useRef<string | null>(null);
+  
+  useEffect(() => {
+    // Only sync if we're the host of a collaborative session
+    if (!collab.state.isCollaborative || !collab.state.isHost) return;
+    
+    // Get the actual session title/description
+    const title = session?.description;
+    if (!title || title === 'New Chat' || title === 'Loading...') return;
+    
+    // Only sync if the title has changed
+    if (title === lastSyncedTitleRef.current) return;
+    
+    console.log('📝 Syncing session title to collaborative session:', title);
+    lastSyncedTitleRef.current = title;
+    
+    collab.actions.updateTitle(title).catch((e) => {
+      console.error('❌ Failed to sync session title:', e);
+    });
+  }, [session?.description, collab.state.isCollaborative, collab.state.isHost, collab.actions]);
 
   const recipe = session?.recipe;
 

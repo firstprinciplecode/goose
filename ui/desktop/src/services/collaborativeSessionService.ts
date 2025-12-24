@@ -176,6 +176,22 @@ export async function endSession(
 }
 
 /**
+ * Update the title of a collaborative session
+ */
+export async function updateSessionTitle(
+  client: SupabaseClient,
+  sessionId: string,
+  title: string
+): Promise<void> {
+  const { error } = await client
+    .from('collaborative_sessions')
+    .update({ title, updated_at: new Date().toISOString() })
+    .eq('id', sessionId);
+
+  if (error) throw error;
+}
+
+/**
  * List active collaborative sessions for a user
  */
 export async function listUserSessions(
