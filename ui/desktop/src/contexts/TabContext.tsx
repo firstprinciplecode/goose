@@ -5,6 +5,11 @@ import { generateSessionId } from '../utils/sessionUtils';
 import { getSession, updateSessionDescription, startAgent, deleteSession } from '../api';
 import { sessionMappingService } from '../services/SessionMappingService';
 import { matrixService } from '../services/MatrixService';
+import { useSupabase } from './SupabaseContext';
+import {
+  getSessionByGooseId,
+  migrateCollaborativeSessionGooseSessionId,
+} from '../services/collaborativeSessionService';
 
 interface TabState {
   tab: Tab;
@@ -197,6 +202,8 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     const activeTab = tabStates.find(ts => ts.tab.isActive);
     return activeTab?.tab.id || tabStates[0]?.tab.id || '';
   });
+
+  const { client: supabaseClient, isEnabled: supabaseEnabled } = useSupabase();
 
   // Save tab state to localStorage whenever it changes
   useEffect(() => {
@@ -709,16 +716,43 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
   const updateSessionId = useCallback((tabId: string, newSessionId: string) => {
     console.log('🔄 Updating session ID for tab:', { tabId, newSessionId });
     
-    setTabStates(prev => prev.map(ts => 
-      ts.tab.id === tabId 
-        ? { 
-            ...ts, 
-            tab: { ...ts.tab, sessionId: newSessionId },
-            chat: { ...ts.chat, sessionId: newSessionId }
+    setTabStates(prev => {
+      const current = prev.find(ts => ts.tab.id === tabId);
+      const oldSessionId = current?.tab.sessionId;
+      const isCollabTab = !!(current?.tab.isCollaborative || current?.tab.isCollaborativeJoin);
+
+      // If this tab is in collaboration mode, migrate the Supabase collaborative session's
+      // goose_session_id so other machines can find it by the updated session id.
+      if (
+        isCollabTab &&
+        supabaseEnabled &&
+        supabaseClient &&
+        oldSessionId &&
+        oldSessionId !== newSessionId
+      ) {
+        void (async () => {
+          try {
+            const existing = await getSessionByGooseId(supabaseClient, oldSessionId);
+            if (existing) {
+              await migrateCollaborativeSessionGooseSessionId(supabaseClient, oldSessionId, newSessionId);
+            }
+          } catch (e) {
+            console.warn('[TabContext] Failed to migrate collaborative goose_session_id:', e);
           }
-        : ts
-    ));
-  }, []);
+        })();
+      }
+
+      return prev.map(ts =>
+        ts.tab.id === tabId
+          ? {
+              ...ts,
+              tab: { ...ts.tab, sessionId: newSessionId },
+              chat: { ...ts.chat, sessionId: newSessionId },
+            }
+          : ts
+      );
+    });
+  }, [supabaseClient, supabaseEnabled]);
 
   // Update just the tab title without affecting messages or other state
   const updateTabTitle = useCallback((tabId: string, title: string) => {

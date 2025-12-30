@@ -126,14 +126,6 @@ export function useCollaborativeAgentSession(
 ): UseCollaborativeAgentSessionReturn {
   const { client, session: authSession, isEnabled } = useSupabase();
 
-  // Debug: Log hook invocation
-  console.log('🔵 useCollaborativeAgentSession CALLED:', { 
-    gooseSessionId, 
-    hasClient: !!client, 
-    isEnabled, 
-    hasUser: !!authSession?.user?.id 
-  });
-
   // State
   const [collabSession, setCollabSession] = useState<CollaborativeSession | null>(null);
   const [participants, setParticipants] = useState<SessionParticipant[]>([]);
@@ -181,36 +173,13 @@ export function useCollaborativeAgentSession(
       cleanupSubscriptions();
 
       // Subscribe to messages
-      // Capture gooseSessionId for logging (closure)
-      const gooseId = gooseSessionId;
       messageSubRef.current = subscribeToMessages(client, sessionId, (msg) => {
-        console.log('[CollabSession] 📩 RECEIVED MESSAGE via subscription:', {
-          gooseSessionId: gooseId,
-          collabSessionId: sessionId,
-          id: msg.id,
-          content: msg.content?.slice(0, 50),
-          user_id: msg.user_id,
-          message_type: msg.message_type,
-          created_at: msg.created_at,
-        });
         setMessages((prev) => {
-          console.log('[CollabSession] 🔄 setMessages callback running:', {
-            gooseSessionId: gooseId,
-            prevLength: prev.length,
-          });
           // Deduplicate
           if (prev.some((m) => m.id === msg.id)) {
-            console.log('[CollabSession] ⏭️ Skipping duplicate message:', msg.id);
             return prev;
           }
-          const newMessages = [...prev, msg];
-          console.log('[CollabSession] ✅ Adding new message to state:', {
-            gooseSessionId: gooseId,
-            messageId: msg.id,
-            content: msg.content?.slice(0, 30),
-            newTotal: newMessages.length,
-          });
-          return newMessages;
+          return [...prev, msg];
         });
       });
 
@@ -222,15 +191,6 @@ export function useCollaborativeAgentSession(
         sessionId,
         async (participant) => {
           // On join - called when a new participant is inserted
-          console.log('[CollabSession] 🎉 PARTICIPANT JOINED:', {
-            userId: participant.user_id,
-            displayName: participant.display_name,
-            email: participant.email,
-            sessionId: participant.session_id,
-            currentUserId,
-            isCurrentUser: participant.user_id === currentUserId,
-          });
-          
           // Fetch the user's profile to get their display name
           let displayName = participant.display_name;
           let email = participant.email;
@@ -241,7 +201,6 @@ export function useCollaborativeAgentSession(
               if (profile) {
                 displayName = profile.displayName;
                 email = profile.email || undefined;
-                console.log('[CollabSession] 📋 Fetched profile for participant:', displayName);
               }
             } catch (e) {
               console.warn('[CollabSession] ⚠️ Failed to fetch participant profile:', e);
@@ -746,23 +705,12 @@ export function useCollaborativeAgentSession(
   // Poll periodically because ChatInput and BaseChat2 have separate hook instances
   // ==========================================================================
   useEffect(() => {
-    console.log('🟡 POLL EFFECT:', { 
-      gooseSessionId, 
-      hasClient: !!client, 
-      isEnabled, 
-      hasUser: !!authSession?.user?.id,
-      hasCollabSession: !!collabSession,
-      collabSessionId: collabSession?.id,
-    });
-
     if (!client || !isEnabled || !gooseSessionId || !authSession?.user?.id) {
-      console.log('🔴 POLL SKIPPED - missing deps');
       return;
     }
 
     // If we already have a session, don't poll
     if (collabSession) {
-      console.log('🟢 POLL SKIPPED - already have session:', collabSession.id);
       return;
     }
 
@@ -771,18 +719,14 @@ export function useCollaborativeAgentSession(
 
     const checkForSession = async () => {
       pollCount++;
-      console.log(`🔄 POLLING for session (${pollCount}):`, gooseSessionId);
-
       try {
         const existingSession = await getSessionByGooseId(client, gooseSessionId);
-        console.log(`🔄 POLL result:`, existingSession?.id || 'null');
         
         if (existingSession && isMounted) {
-          console.log('🟢 Found collaborative session, loading:', existingSession.id);
           await loadSessionData(existingSession.id);
         }
       } catch (e: any) {
-        console.log('🔴 POLL error:', e?.message || e);
+        // Silence to avoid freezing devtools with frequent logs.
       }
     };
 
@@ -793,7 +737,6 @@ export function useCollaborativeAgentSession(
     const pollInterval = setInterval(checkForSession, 2000);
 
     return () => {
-      console.log('🟠 POLL CLEANUP for:', gooseSessionId);
       isMounted = false;
       clearInterval(pollInterval);
     };
@@ -833,13 +776,6 @@ export function useCollaborativeAgentSession(
   // ==========================================================================
   // Create state object directly (not memoized) to ensure component always gets fresh values
   // Previously used useMemo which caused stale values when messages updated
-  console.log('[CollabSession] 🔶 Creating state object:', {
-    gooseSessionId,
-    messagesCount: messages.length,
-    isCollaborative,
-    collabSessionId: collabSession?.id,
-  });
-  
   const state: CollaborativeSessionState = {
     session: collabSession,
     participants,

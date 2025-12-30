@@ -193,6 +193,45 @@ export async function updateSessionTitle(
 }
 
 /**
+ * Migrate a collaborative session's `goose_session_id` when the local Goose session id changes
+ * (e.g. from a temporary/new id to a real backend id). This keeps joins/subscriptions working
+ * when other parts of the UI key off the updated Goose session id.
+ */
+export async function migrateCollaborativeSessionGooseSessionId(
+  client: SupabaseClient,
+  oldGooseSessionId: string,
+  newGooseSessionId: string
+): Promise<CollaborativeSession | null> {
+  if (!oldGooseSessionId || !newGooseSessionId || oldGooseSessionId === newGooseSessionId) {
+    return null;
+  }
+
+  // If a session already exists for the new goose session id, don't overwrite it.
+  const existingNew = await getSessionByGooseId(client, newGooseSessionId);
+  if (existingNew) {
+    return existingNew;
+  }
+
+  const existingOld = await getSessionByGooseId(client, oldGooseSessionId);
+  if (!existingOld) {
+    return null;
+  }
+
+  const { data, error } = await client
+    .from('collaborative_sessions')
+    .update({
+      goose_session_id: newGooseSessionId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', existingOld.id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
  * List active collaborative sessions for a user
  */
 export async function listUserSessions(
