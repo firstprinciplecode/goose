@@ -274,18 +274,6 @@ const EnhancedMentionPopover = forwardRef<
     onClose();
   };
 
-  // Debug logging
-  console.log('🔍 EnhancedMentionPopover render:', { 
-    isOpen, 
-    position, 
-    query, 
-    mentionItemsLength: mentionItems.length,
-    selectedIndex,
-    connectedUsersCount: connectedUsers.length,
-    supabaseEnabled,
-    hasSession: !!supabaseSession,
-  });
-
   if (!isOpen) return null;
 
   // Always render to document.body for reliable positioning

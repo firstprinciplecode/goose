@@ -1504,6 +1504,18 @@ export default function ChatInput({
                   // Load the session into the collab hook so the host starts syncing messages
                   await collab.actions.joinSession(collabSession.id);
                   console.log('🔗 Joined collaborative session as host:', collabSession.id);
+
+                  // Notify other collab hook instances (e.g. BaseChat2) to join the exact
+                  // collaborative session id immediately, instead of relying on polling by
+                  // goose_session_id (which can lag during sessionId transitions).
+                  window.dispatchEvent(
+                    new CustomEvent('collab-session-joined', {
+                      detail: {
+                        gooseSessionId: sessionId,
+                        collabSessionId: collabSession.id,
+                      },
+                    })
+                  );
                   
                   // Mark the tab as having an active collaborative session (for UI indicator)
                   const activeTabState = tabContext.getActiveTabState();

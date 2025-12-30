@@ -122,6 +122,24 @@ function BaseChatContent({
   
   // Get tab context for accessing tab title
   const tabContext = useTabContext();
+
+  // Ensure this chat view joins the exact collaborative session id as soon as it's created/joined
+  // elsewhere in the UI (e.g., `ChatInput`). This prevents "message inserted but not rendered"
+  // issues caused by timing gaps in goose_session_id polling.
+  useEffect(() => {
+    const onJoined = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const detail = e.detail as { gooseSessionId?: string; collabSessionId?: string } | undefined;
+      if (!detail?.gooseSessionId || !detail?.collabSessionId) return;
+      if (detail.gooseSessionId !== sessionId) return;
+      if (collab.state.session?.id === detail.collabSessionId) return;
+      // Join idempotently; hook will handle subscription setup and state hydration.
+      void collab.actions.joinSession(detail.collabSessionId);
+    };
+
+    window.addEventListener('collab-session-joined', onJoined as EventListener);
+    return () => window.removeEventListener('collab-session-joined', onJoined as EventListener);
+  }, [sessionId, collab.actions, collab.state.session?.id]);
   
   // Debug: log collab state on every render
   console.log('🔷 BaseChat2 RENDER - collab state:', {

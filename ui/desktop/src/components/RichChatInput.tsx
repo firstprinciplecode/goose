@@ -1080,7 +1080,6 @@ export const RichChatInput = forwardRef<RichChatInputRef, RichChatInputProps>(({
       }} />
       
       {/* Spell Check Hover Tooltip */}
-      {console.log('🖱️ TOOLTIP RENDER: tooltip state:', tooltip)}
       <SpellCheckTooltip
         isVisible={tooltip.isVisible}
         position={tooltip.position}
