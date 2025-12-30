@@ -512,7 +512,23 @@ export function useCollaborativeAgentSession(
   const sendHumanMessage = useCallback(
     async (content: string, localMessageId?: string, sessionIdOverride?: string) => {
       // Allow passing session ID override for cases where React state hasn't updated yet
-      const sessionId = sessionIdOverride || collabSession?.id;
+      let sessionId = sessionIdOverride || collabSession?.id;
+      
+      // Robustness: during the "just invited / just joined" window, this hook might not
+      // have loaded `collabSession` yet even though we know the Goose session id.
+      // In that case, do a best-effort lookup so user messages still publish.
+      if (!sessionId && client && gooseSessionId) {
+        try {
+          const lookedUp = await getSessionByGooseId(client, gooseSessionId);
+          if (lookedUp?.id) {
+            sessionId = lookedUp.id;
+            // opportunistically hydrate local state so subsequent sends don't need lookup
+            setCollabSession(lookedUp);
+          }
+        } catch (e) {
+          // ignore here; we'll hit the standard "missing deps" guard below
+        }
+      }
       
       console.log('[CollabSession] sendHumanMessage called:', {
         hasClient: !!client,
@@ -545,7 +561,7 @@ export function useCollaborativeAgentSession(
         setError(getErrorMessage(e));
       }
     },
-    [client, collabSession, authSession?.user?.id, authSession?.user?.email]
+    [client, collabSession, gooseSessionId, authSession?.user?.id, authSession?.user?.email]
   );
 
   const sendAssistantMessage = useCallback(

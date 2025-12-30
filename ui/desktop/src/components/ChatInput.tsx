@@ -1543,10 +1543,14 @@ export default function ChatInput({
         if (isCollaborativeNow) {
           console.log('[ChatInput] 📤 Syncing human message to Supabase', { 
             justJoinedSessionId, 
-            stateSessionId: collab.state.sessionId 
+            stateSessionId: collab.state.session?.id,
           });
           // Pass the session ID override for cases where React state hasn't updated yet
-          await collab.actions.sendHumanMessage(textToSend, localMessageId, justJoinedSessionId || undefined);
+          await collab.actions.sendHumanMessage(
+            textToSend,
+            localMessageId,
+            justJoinedSessionId || undefined
+          );
         }
         
         // Reset the ref after use
