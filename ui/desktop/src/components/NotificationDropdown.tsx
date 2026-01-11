@@ -250,7 +250,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         // Cross-machine invites: inviter's local backend session id may not exist here.
         let gooseSessionIdToJoin = invite.goose_session_id;
         if (!openResult.success) {
-          const created = await createChatTab({ title: sessionTitle });
+          const created = await createChatTab({ title: sessionTitle, isCollaborativeJoin: true });
           if (created) {
             gooseSessionIdToJoin = created.sessionId;
           }

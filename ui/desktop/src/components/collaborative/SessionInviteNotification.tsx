@@ -131,7 +131,7 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
         // Cross-machine invites: inviter's local backend session id may not exist here.
         let gooseSessionIdToJoin = gooseSessionId;
         if (!openResult.success) {
-          const created = await createChatTab({ title: sessionTitle });
+          const created = await createChatTab({ title: sessionTitle, isCollaborativeJoin: true });
           if (created) {
             gooseSessionIdToJoin = created.sessionId;
           }

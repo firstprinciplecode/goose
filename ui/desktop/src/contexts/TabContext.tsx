@@ -26,7 +26,7 @@ interface TabContextType {
   handleTabClick: (tabId: string) => void;
   handleTabClose: (tabId: string) => void;
   handleNewTab: () => void;
-  createChatTab: (overrides?: { title?: string }) => Promise<{ tabId: string; sessionId: string } | null>;
+  createChatTab: (overrides?: { title?: string; isCollaborativeJoin?: boolean }) => Promise<{ tabId: string; sessionId: string } | null>;
   handleChatUpdate: (tabId: string, chat: ChatType) => void;
   handleMessageSubmit: (message: string, tabId: string) => void;
   getActiveTabState: () => TabState | undefined;
@@ -288,7 +288,7 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     setActiveTabId(tabId);
   }, [activeTabId]);
 
-  const createChatTab = useCallback(async (overrides?: { title?: string }): Promise<{ tabId: string; sessionId: string } | null> => {
+  const createChatTab = useCallback(async (overrides?: { title?: string; isCollaborativeJoin?: boolean }): Promise<{ tabId: string; sessionId: string } | null> => {
     try {
       const response = await startAgent({
         body: {
@@ -301,7 +301,11 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
       }
 
       const sessionId = response.data.id;
-      const newTab = createNewTab({ sessionId, title: overrides?.title ?? 'New Chat' });
+      const newTab = createNewTab({
+        sessionId,
+        title: overrides?.title ?? 'New Chat',
+        isCollaborativeJoin: overrides?.isCollaborativeJoin ?? false,
+      });
       const newTabState: TabState = {
         tab: newTab,
         chat: createNewChat(sessionId),

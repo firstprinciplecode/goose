@@ -103,12 +103,15 @@ function BaseChatContent({
   // for *everyone* (host + guests). When the guest leaves, this becomes false and Goose
   // returns to normal auto-response.
   const gooseMentionOnly = useMemo(() => {
+    // If we know we're joining a collab session (e.g. invite accept fallback created a fresh local tab),
+    // start in mention-only to avoid a brief "Goose ON" window before participants hydrate.
+    if (isCollaborativeJoin) return true;
     if (!collab.state.isCollaborative) return false;
     const activeOthers = collab.state.participants.filter(
       (p) => p.is_active && p.user_id !== collab.state.currentUserId
     );
     return activeOthers.length > 0;
-  }, [collab.state.isCollaborative, collab.state.participants, collab.state.currentUserId]);
+  }, [isCollaborativeJoin, collab.state.isCollaborative, collab.state.participants, collab.state.currentUserId]);
 
   const {
     session,

@@ -91,7 +91,7 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
           const openResult = await openExistingSession(sessionId, undefined, !!collabParam)
           let gooseSessionIdToJoin = sessionId;
           if (!openResult.success) {
-            const created = await createChatTab({ title: 'Collaborative session' });
+            const created = await createChatTab({ title: 'Collaborative session', isCollaborativeJoin: true });
             if (created) gooseSessionIdToJoin = created.sessionId;
           }
 
