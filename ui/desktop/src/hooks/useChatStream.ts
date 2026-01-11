@@ -887,13 +887,45 @@ export function useChatStream({
         if (!shouldStrip) return withUser;
         const last = withUser[withUser.length - 1];
         if (!last) return withUser;
+        const previousText = (() => {
+          // Find the most recent non-@goose user message to use as an anchor if the trigger is vague.
+          for (let i = withUser.length - 2; i >= 0; i--) {
+            const m = withUser[i];
+            if (!m || (m as any).role !== 'user') continue;
+            const txt =
+              Array.isArray((m as any).content)
+                ? ((m as any).content as any[])
+                    .filter((c) => c && c.type === 'text')
+                    .map((c) => c.text || '')
+                    .join('')
+                    .trim()
+                : '';
+            if (!txt) continue;
+            if (/@goose\b/i.test(txt)) continue;
+            return txt;
+          }
+          return '';
+        })();
+
         const newLast: Message = {
           ...last,
           content: Array.isArray(last.content)
             ? last.content.map((c) => {
                 if (!c || c.type !== 'text') return c;
-                const text = (c.text || '').replace(/@goose\b/gi, '').trim();
-                return { ...c, text };
+                const stripped = (c.text || '').replace(/@goose\b/gi, '').trim();
+                // If the @goose message is vague ("do you know?", "answer that"), append a short
+                // hint with the immediately preceding question so the agent doesn't lose context.
+                const isVagueTrigger =
+                  stripped.length <= 40 &&
+                  (/\b(that|this|it)\b/i.test(stripped) ||
+                    /^(hmm\s*)?(do you know|thoughts|any ideas|can you help|what do you say)\b/i.test(
+                      stripped
+                    ));
+                const text =
+                  isVagueTrigger && previousText
+                    ? `${stripped}\n\nContext: ${previousText.slice(0, 240)}`
+                    : stripped;
+                return { ...c, text: text.trim() };
               })
             : last.content,
         };
