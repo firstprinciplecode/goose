@@ -39,6 +39,7 @@ import EnhancedMentionPopover from './EnhancedMentionPopover';
 import { useSupabase } from '../contexts/SupabaseContext';
 import type { UseCollaborativeAgentSessionReturn } from '../hooks/useCollaborativeAgentSession';
 import { useTabContext } from '../contexts/TabContext';
+import { useDraftContext } from '../contexts/DraftContext';
 import { 
   createCollaborativeSession, 
   getSessionByGooseId,
@@ -86,6 +87,7 @@ interface ModelLimit {
 
 interface ChatInputProps {
   sessionId: string | null;
+  tabId?: string;
   handleSubmit: (e: React.FormEvent) => void;
   chatState: ChatState;
   onStop?: () => void;
@@ -126,6 +128,7 @@ interface ChatInputProps {
 
 export default function ChatInput({
   sessionId,
+  tabId,
   handleSubmit,
   chatState = ChatState.Idle,
   onStop,
@@ -343,7 +346,15 @@ export default function ChatInput({
   // Draft functionality - get chat context and global draft context
   // We need to handle the case where ChatInput is used without ChatProvider (e.g., in Hub)
   const chatContext = useChatContext(); // This should always be available now
+  const draftContext = useDraftContext();
   const draftLoadedRef = useRef(false);
+
+  // Key drafts by tab (preferred) or by session id, to prevent draft leakage across tabs/sessions.
+  const draftKey = useMemo(() => {
+    if (tabId) return `chat-tab-${tabId}`;
+    if (sessionId) return `pair-${sessionId}`;
+    return chatContext?.contextKey || 'hub';
+  }, [tabId, sessionId, chatContext?.contextKey]);
 
   // Debug logging for draft context
   useEffect(() => {
@@ -825,12 +836,12 @@ export default function ChatInput({
   useEffect(() => {
     // Reset draft loaded flag when context changes
     draftLoadedRef.current = false;
-  }, [chatContext?.contextKey]);
+  }, [draftKey]);
 
   useEffect(() => {
     // Only load draft once and if conditions are met
-    if (!initialValue && !recipeConfig && !draftLoadedRef.current && chatContext) {
-      const draftText = chatContext.draft || '';
+    if (!initialValue && !recipeConfig && !draftLoadedRef.current) {
+      const draftText = draftContext.getDraft(draftKey) || '';
 
       if (draftText) {
         setDisplayValue(draftText);
@@ -840,17 +851,15 @@ export default function ChatInput({
       // Always mark as loaded after checking, regardless of whether we found a draft
       draftLoadedRef.current = true;
     }
-  }, [chatContext, initialValue, recipeConfig]);
+  }, [draftContext, draftKey, initialValue, recipeConfig]);
 
   // Save draft when user types (debounced)
   const debouncedSaveDraft = useMemo(
     () =>
       debounce((value: string) => {
-        if (chatContext && chatContext.setDraft) {
-          chatContext.setDraft(value);
-        }
+        draftContext.setDraft(draftKey, value);
       }, 500), // Save draft after 500ms of no typing
-    [chatContext]
+    [draftContext, draftKey]
   );
 
   // State to track if the IME is composing (i.e., in the middle of Japanese IME input)
@@ -1774,9 +1783,7 @@ export default function ChatInput({
         setHasUserTyped(false);
 
         // Clear draft when message is sent
-        if (chatContext && chatContext.clearDraft) {
-          chatContext.clearDraft();
-        }
+        draftContext.clearDraft(draftKey);
 
         // Clear selected actions when message is sent
         // Actions cleared when message sent

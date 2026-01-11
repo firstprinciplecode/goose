@@ -850,6 +850,7 @@ function BaseChatContent({
         <div className="pointer-events-auto">
           <ChatInput
             sessionId={sessionId}
+            tabId={tabId}
             handleSubmit={handleFormSubmit}
             chatState={chatState}
             onStop={stopStreaming}
