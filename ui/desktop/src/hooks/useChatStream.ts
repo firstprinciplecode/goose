@@ -63,6 +63,8 @@ const DEBUG_CHAT_STREAM = true;
 
 // Check if a message contains goose commands or mentions that shouldn't trigger AI response
 // Returns an object with skipAI flag and new goose state
+const GOOSE_OFF_COMMANDS = ['@goose off', '@goose stop', '@goose quiet', '@goose pause'] as const;
+
 function checkForGooseCommands(message: string, currentGooseEnabled: boolean): { 
   skipAI: boolean; 
   newGooseEnabled: boolean;
@@ -76,8 +78,7 @@ function checkForGooseCommands(message: string, currentGooseEnabled: boolean): {
   const trimmedMessage = message.trim().toLowerCase();
   
   // Check for goose OFF commands (must be exact matches)
-  const gooseOffCommands = ['@goose off', '@goose stop', '@goose quiet', '@goose pause'];
-  for (const command of gooseOffCommands) {
+  for (const command of GOOSE_OFF_COMMANDS) {
     if (trimmedMessage === command) {
       console.log('🦆 Goose turned OFF with command:', command);
       return { skipAI: true, newGooseEnabled: false, isGooseCommand: true };
@@ -174,6 +175,7 @@ interface UseChatStreamProps {
   tabId?: string; // Tab ID to filter sidecars for context injection
   matrixRoomId?: string; // Matrix room ID for loading historical messages
   isCollaborativeJoin?: boolean; // Flag to indicate this is joining a collaborative session (Goose disabled initially)
+  gooseMentionOnly?: boolean; // When true: Goose only responds if message includes @goose (no persistent enabling)
 }
 
 interface UseChatStreamReturn {
@@ -345,6 +347,7 @@ export function useChatStream({
   tabId,
   matrixRoomId,
   isCollaborativeJoin = false,
+  gooseMentionOnly = false,
 }: UseChatStreamProps): UseChatStreamReturn {
   
   // Debug logging for Matrix parameters
@@ -360,8 +363,9 @@ export function useChatStream({
   const [session, setSession] = useState<Session>();
   const [sessionLoadError, setSessionLoadError] = useState<string>();
   const [chatState, setChatState] = useState<ChatState>(ChatState.Idle);
-  // Goose starts disabled for collaborative joins (only responds to @goose)
-  const [gooseEnabled, setGooseEnabled] = useState<boolean>(!isCollaborativeJoin);
+  // Goose starts disabled for collaborative joins and for mention-only mode (only responds to @goose)
+  const [gooseEnabled, setGooseEnabled] = useState<boolean>(!isCollaborativeJoin && !gooseMentionOnly);
+  const wasForcedMentionOnlyRef = useRef(false);
   const [tokenState, setTokenState] = useState<TokenState>({
     inputTokens: 0,
     outputTokens: 0,
@@ -377,6 +381,25 @@ export function useChatStream({
       resultsCache.set(sessionId, { session, messages });
     }
   }, [sessionId, session, messages]);
+
+  // Mention-only mode (collaboration): force Goose OFF for everyone.
+  // When the guest leaves (mention-only false again), restore Goose ON automatically.
+  useEffect(() => {
+    if (gooseMentionOnly) {
+      if (gooseEnabled) {
+        wasForcedMentionOnlyRef.current = true;
+      }
+      if (gooseEnabled !== false) {
+        setGooseEnabled(false);
+      }
+      return;
+    }
+
+    if (wasForcedMentionOnlyRef.current) {
+      setGooseEnabled(true);
+      wasForcedMentionOnlyRef.current = false;
+    }
+  }, [gooseMentionOnly, gooseEnabled]);
 
   const renderCountRef = useRef(0);
   renderCountRef.current += 1;
@@ -716,8 +739,28 @@ export function useChatStream({
         userMessageLength: userMessage.length,
       });
 
-      // Check if this is a goose control command or mention that shouldn't trigger AI response
-      const commandResult = checkForGooseCommands(userMessage, gooseEnabled);
+      // Check if this is a goose control command or mention that shouldn't trigger AI response.
+      // In mention-only mode, @goose is a one-shot trigger (does NOT permanently enable Goose).
+      const commandResult = (() => {
+        if (!gooseMentionOnly) {
+          return checkForGooseCommands(userMessage, gooseEnabled);
+        }
+
+        const trimmed = userMessage.trim().toLowerCase();
+        const isGooseOffCommand = (GOOSE_OFF_COMMANDS as readonly string[]).includes(trimmed);
+        const containsGooseMention = /@goose\b/i.test(userMessage);
+
+        if (isGooseOffCommand) {
+          return { skipAI: true, newGooseEnabled: false, isGooseCommand: true };
+        }
+
+        if (containsGooseMention) {
+          // Trigger AI, but keep Goose disabled (mention-only).
+          return { skipAI: false, newGooseEnabled: false, isGooseCommand: false };
+        }
+
+        return { skipAI: true, newGooseEnabled: false, isGooseCommand: false };
+      })();
       
       // Inject sidecar context into the user message before creating the message object
       let messageWithContext = userMessage;
@@ -805,8 +848,8 @@ export function useChatStream({
       const currentMessages = [...messagesRef.current, createUserMessage(messageWithContext)];
       setMessagesAndLog(currentMessages, 'user-entered');
 
-      // Update goose enabled state if it changed
-      if (commandResult.newGooseEnabled !== gooseEnabled) {
+      // Update goose enabled state if it changed (skip in mention-only mode; it's forced off)
+      if (!gooseMentionOnly && commandResult.newGooseEnabled !== gooseEnabled) {
         setGooseEnabled(commandResult.newGooseEnabled);
         console.log('🦆 Goose state changed:', commandResult.newGooseEnabled ? 'ENABLED' : 'DISABLED');
       }
@@ -996,7 +1039,7 @@ export function useChatStream({
         }
       }
     },
-    [sessionId, session, gooseEnabled, setMessagesAndLog, onFinish, onSessionIdChange]
+    [sessionId, session, gooseEnabled, gooseMentionOnly, setMessagesAndLog, onFinish, onSessionIdChange]
   );
 
   const setRecipeUserParams = useCallback(
