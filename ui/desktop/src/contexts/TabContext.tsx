@@ -400,12 +400,6 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
   }, [tabStates]);
 
   const handleTabClose = useCallback(async (tabId: string) => {
-    // Prevent closing the last tab
-    if (tabStates.length === 1) {
-      console.log('🚫 Cannot close the last tab');
-      return;
-    }
-
     // Get the tab being closed for cleanup logic
     const closingTab = tabStates.find(ts => ts.tab.id === tabId);
     
@@ -437,20 +431,31 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
       }
     }
 
-    // Update tab states
-    setTabStates(prev => {
-      const newStates = prev.filter(ts => ts.tab.id !== tabId);
-      
-      // If we're closing the active tab, activate another one
-      if (tabId === activeTabId && newStates.length > 0) {
-        const tabIndex = prev.findIndex(ts => ts.tab.id === tabId);
-        const nextActiveIndex = Math.min(tabIndex, newStates.length - 1);
-        setActiveTabId(newStates[nextActiveIndex].tab.id);
+    // Update tab states (and active tab) atomically.
+    // IMPORTANT: use functional updates so a "close tab" can't override a new active tab
+    // that was set by a subsequent "+" click.
+    setTabStates((prev) => {
+      // Prevent closing the last tab (use latest state, not captured closure).
+      if (prev.length === 1) {
+        console.log('🚫 Cannot close the last tab');
+        return prev;
       }
-      
+
+      const newStates = prev.filter((ts) => ts.tab.id !== tabId);
+
+      // If we closed the active tab, pick a neighbor, but only if the active tab
+      // is STILL the one being closed (avoid races with handleNewTab).
+      setActiveTabId((currentActive) => {
+        if (currentActive !== tabId) return currentActive;
+        if (newStates.length === 0) return currentActive;
+        const tabIndex = prev.findIndex((ts) => ts.tab.id === tabId);
+        const nextActiveIndex = Math.min(tabIndex, newStates.length - 1);
+        return newStates[nextActiveIndex].tab.id;
+      });
+
       return newStates;
     });
-  }, [activeTabId, tabStates]);
+  }, [tabStates]);
 
   const handleChatUpdate = useCallback((tabId: string, chat: ChatType) => {
     setTabStates(prev => prev.map(ts => 
