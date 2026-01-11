@@ -442,15 +442,10 @@ export async function createInvite(
   invitedBy: string,
   options?: InviteOptions
 ): Promise<SessionInvite> {
-  const expiresAt = options?.expiresInDays
-    ? new Date(Date.now() + options.expiresInDays * 24 * 60 * 60 * 1000).toISOString()
-    : null;
-
   // Build insert object based on invite type
   const insertData: Record<string, unknown> = {
     session_id: sessionId,
     invited_by: invitedBy,
-    expires_at: expiresAt,
   };
 
   if (options?.targetUserId) {
@@ -483,7 +478,9 @@ export async function inviteUser(
   invitedBy: string,
   targetUserId: string
 ): Promise<SessionInvite> {
-  return createInvite(client, sessionId, invitedBy, { targetUserId, expiresInDays: 1 });
+  // NOTE: Avoid setting `expires_at` client-side (machine clock skew can cause immediately "expired" invites).
+  // Let the DB default decide expiry.
+  return createInvite(client, sessionId, invitedBy, { targetUserId });
 }
 
 /**

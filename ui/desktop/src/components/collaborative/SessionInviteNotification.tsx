@@ -97,6 +97,23 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
     setProcessingInvites((prev) => new Set(prev).add(invite.id));
 
     try {
+      // Preflight: log the current row + auth identity to debug "unauthorized/expired" errors.
+      try {
+        const { data: row, error: rowErr } = await client
+          .from('session_invites')
+          .select('id,status,expires_at,target_user_id,target_email,invited_by,session_id,created_at,invite_token')
+          .eq('id', invite.id)
+          .maybeSingle();
+        if (rowErr) {
+          console.warn('[SessionInvite] Preflight invite fetch error:', rowErr);
+        } else {
+          console.log('[SessionInvite] Preflight invite row:', row);
+          console.log('[SessionInvite] Preflight auth identity:', { userId: user?.id, email: user?.email });
+        }
+      } catch (preflightErr) {
+        console.warn('[SessionInvite] Preflight invite fetch threw:', preflightErr);
+      }
+
       const collabSessionId = await acceptInvite(client, invite.id);
       console.log('[SessionInvite] Accepted invite, joining session:', collabSessionId);
 
@@ -131,6 +148,10 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
       }
     } catch (e) {
       console.error('[SessionInvite] Failed to accept invite:', e);
+      const msg = String((e as any)?.message || '');
+      if (msg.toLowerCase().includes('invalid, expired, or unauthorized invite')) {
+        setPendingInvites((prev) => prev.filter((p) => p.id !== invite.id));
+      }
     } finally {
       setProcessingInvites((prev) => {
         const next = new Set(prev);
@@ -138,7 +159,7 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
         return next;
       });
     }
-  }, [client, processingInvites, navigate, openExistingSession, createChatTab]);
+  }, [client, processingInvites, navigate, openExistingSession, createChatTab, user?.id, user?.email]);
 
   const handleDecline = useCallback(async (invite: SessionInvite) => {
     if (!client || processingInvites.has(invite.id)) return;

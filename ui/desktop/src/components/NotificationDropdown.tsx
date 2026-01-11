@@ -153,20 +153,14 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
           })));
         }
         
+        // Reconcile local state to server state so stale/expired invites don't stick around.
         setPendingInvites((prev) => {
-          // Merge with existing, avoiding duplicates by ID AND session_id
-          const existingIds = new Set(prev.map(p => p.id));
-          const existingSessionIds = new Set(prev.map(p => p.session_id));
-          const newInvites = invites.filter(i => 
-            !existingIds.has(i.id) && !existingSessionIds.has(i.session_id)
-          );
-          if (newInvites.length > 0) {
-            console.log('[NotificationDropdown] Poll found new invites:', newInvites.length);
-            return [...prev, ...newInvites];
+          const serverIds = new Set(invites.map((i) => i.id));
+          const stillProcessing = prev.filter((p) => processingInvites.has(p.id) && !serverIds.has(p.id));
+          if (stillProcessing.length > 0) {
+            return [...invites, ...stillProcessing];
           }
-          // Don't remove invites if poll returns 0 - keep existing state
-          // (Supabase queries can be inconsistent)
-          return prev;
+          return invites;
         });
       } catch (e: any) {
         console.error('[NotificationDropdown] 🔴 Poll error:', e?.message || e);
@@ -175,7 +169,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
 
     const pollInterval = setInterval(pollInvites, 5000);
     return () => clearInterval(pollInterval);
-  }, [client, user, isEnabled]);
+  }, [client, user, isEnabled, pendingInvites.length, processingInvites]);
 
   // Subscribe to incoming invites (realtime)
   useEffect(() => {
@@ -216,6 +210,23 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     setProcessingInvites((prev) => new Set(prev).add(invite.id));
 
     try {
+      // Preflight: log the current row + auth identity to debug "unauthorized/expired" errors.
+      try {
+        const { data: row, error: rowErr } = await client
+          .from('session_invites')
+          .select('id,status,expires_at,target_user_id,target_email,invited_by,session_id,created_at,invite_token')
+          .eq('id', invite.id)
+          .maybeSingle();
+        if (rowErr) {
+          console.warn('[NotificationDropdown] Preflight invite fetch error:', rowErr);
+        } else {
+          console.log('[NotificationDropdown] Preflight invite row:', row);
+          console.log('[NotificationDropdown] Preflight auth identity:', { userId: user?.id, email: user?.email });
+        }
+      } catch (preflightErr) {
+        console.warn('[NotificationDropdown] Preflight invite fetch threw:', preflightErr);
+      }
+
       console.log('[NotificationDropdown] Calling acceptInvite RPC...');
       const collabSessionId = await acceptInvite(client, invite.id);
       console.log('[NotificationDropdown] ✅ Accepted invite, collab session:', collabSessionId);
@@ -260,6 +271,11 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     } catch (e: any) {
       console.error('[NotificationDropdown] ❌ Failed to accept invite:', e);
       console.error('[NotificationDropdown] Error details:', e?.message, e?.code, e?.details);
+      // If Supabase says it's invalid/expired/unauthorized, remove it locally so it doesn't stay "pending" forever.
+      const msg = String(e?.message || '');
+      if (msg.toLowerCase().includes('invalid, expired, or unauthorized invite')) {
+        setPendingInvites((prev) => prev.filter((p) => p.id !== invite.id));
+      }
       alert(`Failed to accept invite: ${e?.message || 'Unknown error'}`);
     } finally {
       setProcessingInvites((prev) => {
@@ -268,7 +284,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         return next;
       });
     }
-  }, [client, processingInvites, openExistingSession, createChatTab, navigate]);
+  }, [client, processingInvites, openExistingSession, createChatTab, navigate, user?.id, user?.email]);
 
   const handleDecline = useCallback(async (invite: SessionInvite) => {
     if (!client || processingInvites.has(invite.id)) return;
