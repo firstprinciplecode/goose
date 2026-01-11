@@ -96,6 +96,11 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
           }
 
           if (collabParam) {
+            try {
+              sessionStorage.setItem(`pending-collab-join:${gooseSessionIdToJoin}`, collabParam);
+            } catch {
+              // ignore
+            }
             setTimeout(() => {
               window.dispatchEvent(
                 new CustomEvent('collab-session-joined', {

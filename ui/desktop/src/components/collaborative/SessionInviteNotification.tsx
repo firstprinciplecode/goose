@@ -138,6 +138,11 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
         }
 
         // Tell BaseChat2 to join the exact collab session id immediately.
+        try {
+          sessionStorage.setItem(`pending-collab-join:${gooseSessionIdToJoin}`, collabSessionId);
+        } catch {
+          // ignore
+        }
         setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent('collab-session-joined', {

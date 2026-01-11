@@ -256,6 +256,13 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
           }
         }
 
+        // Persist join intent in case the new tab mounts after the event fires.
+        try {
+          sessionStorage.setItem(`pending-collab-join:${gooseSessionIdToJoin}`, collabSessionId);
+        } catch {
+          // ignore
+        }
+
         setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent('collab-session-joined', {
