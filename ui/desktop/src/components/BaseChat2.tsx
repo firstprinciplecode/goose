@@ -162,17 +162,36 @@ function BaseChatContent({
   // elsewhere in the UI (e.g., `ChatInput`). This prevents "message inserted but not rendered"
   // issues caused by timing gaps in goose_session_id polling.
   useEffect(() => {
+    const storageKey = `pending-collab-join:${sessionId}`;
+
     const onJoined = (evt: Event) => {
       const e = evt as CustomEvent;
       const detail = e.detail as { gooseSessionId?: string; collabSessionId?: string } | undefined;
       if (!detail?.gooseSessionId || !detail?.collabSessionId) return;
       if (detail.gooseSessionId !== sessionId) return;
       if (collab.state.session?.id === detail.collabSessionId) return;
+      try {
+        sessionStorage.removeItem(storageKey);
+      } catch {
+        // ignore
+      }
       // Join idempotently; hook will handle subscription setup and state hydration.
       void collab.actions.joinSession(detail.collabSessionId);
     };
 
     window.addEventListener('collab-session-joined', onJoined as EventListener);
+
+    // Also handle the case where the join event fired before this tab mounted (race).
+    try {
+      const pending = sessionStorage.getItem(storageKey);
+      if (pending && (!collab.state.session?.id || collab.state.session.id !== pending)) {
+        void collab.actions.joinSession(pending);
+        sessionStorage.removeItem(storageKey);
+      }
+    } catch {
+      // ignore
+    }
+
     return () => window.removeEventListener('collab-session-joined', onJoined as EventListener);
   }, [sessionId, collab.actions, collab.state.session?.id]);
   
