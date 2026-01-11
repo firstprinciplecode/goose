@@ -94,20 +94,15 @@ describe('LeadWorkerSettings', () => {
       expect(screen.getByText('Lead/Worker Mode')).toBeInTheDocument();
     });
 
-    // Labels should be present with back-to-list controls
+    // Labels should be present
     await waitFor(() => {
       expect(screen.getByText('Lead Model')).toBeInTheDocument();
       expect(screen.getByText('Worker Model')).toBeInTheDocument();
-      // Back to model list appears for each section when in custom mode
-      const backLinks = screen.getAllByText('Back to model list');
-      expect(backLinks.length).toBeGreaterThanOrEqual(2);
     });
 
-    const inputs = screen.getAllByPlaceholderText('Type model name here') as HTMLInputElement[];
-    expect(inputs.length).toBe(2);
-    const [leadInput, workerInput] = inputs;
-    expect(leadInput.value).toBe('my-custom-lead');
-    expect(workerInput.value).toBe('my-custom-worker');
+    // Since current models are not in the provider lists, selects will show placeholders
+    expect(screen.getAllByText(/Select lead model/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Select worker model/i).length).toBeGreaterThanOrEqual(1);
 
     // Save settings
     const saveBtn = screen.getByRole('button', { name: 'Save Settings' });

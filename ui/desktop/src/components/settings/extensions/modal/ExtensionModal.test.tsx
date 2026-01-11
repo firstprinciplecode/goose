@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ExtensionModal from './ExtensionModal';
 import { ExtensionFormData } from '../utils';
@@ -54,19 +54,15 @@ describe('ExtensionModal', () => {
     const descriptionInput = screen.getByPlaceholderText('Optional description...');
     await user.type(descriptionInput, 'Test MCP extension');
 
-    const headerNameInput = screen.getByPlaceholderText('Header name');
-    const headerValueInput = screen
-      .getAllByPlaceholderText('Value')
-      .find(
-        (input) =>
-          input.closest('div')?.textContent?.includes('Request Headers') ||
-          input.parentElement?.parentElement?.textContent?.includes('Request Headers')
-      );
+    const headersRoot = screen.getByText('Request Headers').closest('div')?.parentElement as HTMLElement;
+    const headerNameInput = within(headersRoot).getByPlaceholderText('Header name');
+    const headerValueInput = within(headersRoot).getByPlaceholderText('Value');
+    const addHeaderButton = within(headersRoot).getByRole('button', { name: /add/i });
 
     await user.type(headerNameInput, 'Authorization');
-    if (headerValueInput) {
-      await user.type(headerValueInput, 'Bearer abc123');
-    }
+    await user.type(headerValueInput, 'Bearer abc123');
+    // HeadersSection requires clicking "Add" to persist the header row.
+    await user.click(addHeaderButton);
 
     await user.click(submitButton);
 

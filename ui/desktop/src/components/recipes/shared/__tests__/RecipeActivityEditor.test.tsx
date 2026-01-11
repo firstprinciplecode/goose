@@ -25,16 +25,18 @@ describe('RecipeActivityEditor', () => {
 
     it('shows helper text', () => {
       render(<RecipeActivityEditor activities={[]} setActivities={mockOnChange} />);
-      expect(screen.getByText(/top-line prompts and activity buttons/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/top-line prompts and activities/i)
+      ).toBeInTheDocument();
     });
   });
 
   describe('Empty State', () => {
     it('shows message input when no activities', () => {
       render(<RecipeActivityEditor activities={[]} setActivities={mockOnChange} />);
-      expect(screen.getByText('Message')).toBeInTheDocument();
+      expect(screen.getByText('Message (Optional)')).toBeInTheDocument();
       expect(
-        screen.getByPlaceholderText(/Enter a user facing introduction message/)
+        screen.getByPlaceholderText(/Enter a message for your recipe/i)
       ).toBeInTheDocument();
     });
   });
@@ -45,7 +47,7 @@ describe('RecipeActivityEditor', () => {
       render(<RecipeActivityEditor activities={activities} setActivities={mockOnChange} />);
 
       const messageTextarea = screen.getByPlaceholderText(
-        /Enter a user facing introduction message/
+        /Enter a message for your recipe/i
       );
       expect(messageTextarea).toHaveValue(' Hello World');
 
@@ -91,7 +93,7 @@ describe('RecipeActivityEditor', () => {
       const user = userEvent.setup();
       render(<RecipeActivityEditor activities={[]} setActivities={mockOnChange} />);
 
-      const messageInput = screen.getByPlaceholderText(/Enter a user facing introduction message/);
+      const messageInput = screen.getByPlaceholderText(/Enter a message for your recipe/i);
       await user.type(messageInput, 'Test message');
 
       expect(messageInput).toHaveValue('Test message');
@@ -103,7 +105,7 @@ describe('RecipeActivityEditor', () => {
         <RecipeActivityEditor activities={[]} setActivities={mockOnChange} onBlur={mockOnBlur} />
       );
 
-      const messageInput = screen.getByPlaceholderText(/Enter a user facing introduction message/);
+      const messageInput = screen.getByPlaceholderText(/Enter a message for your recipe/i);
       await user.click(messageInput);
       await user.tab();
 

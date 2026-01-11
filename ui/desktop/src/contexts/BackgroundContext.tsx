@@ -30,6 +30,10 @@ interface StoredConfig {
   customConfig: CustomBackgroundConfig | null;
 }
 
+function isDisallowedGlobalImage(config: StoredConfig): boolean {
+  return config.preset === 'custom' && config.customConfig?.type === 'image';
+}
+
 export function BackgroundProvider({ children }: { children: ReactNode }) {
   const [preset, setPresetState] = useState<BackgroundPreset>('default');
   const [customConfig, setCustomConfigState] = useState<CustomBackgroundConfig | null>(null);
@@ -40,12 +44,54 @@ export function BackgroundProvider({ children }: { children: ReactNode }) {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const config: StoredConfig = JSON.parse(saved);
-        setPresetState(config.preset);
-        setCustomConfigState(config.customConfig);
+        // Only Home screen should support background images.
+        // If we have an old persisted global image background, clear it.
+        if (isDisallowedGlobalImage(config)) {
+          localStorage.removeItem(STORAGE_KEY);
+          setPresetState('default');
+          setCustomConfigState(null);
+        } else {
+          setPresetState(config.preset);
+          setCustomConfigState(config.customConfig);
+        }
       }
     } catch (error) {
       console.warn('Failed to load background config:', error);
     }
+  }, []);
+
+  // Cross-window sync: if Preferences/Settings is opened in a separate Electron window,
+  // changes to localStorage happen there. Listen for storage events so the main app window
+  // updates immediately without requiring a restart.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return;
+
+      if (!e.newValue) {
+        setPresetState('default');
+        setCustomConfigState(null);
+        return;
+      }
+
+      try {
+        const config: StoredConfig = JSON.parse(e.newValue);
+        if (isDisallowedGlobalImage(config)) {
+          // Clear in response to another window attempting to set a global background image.
+          localStorage.removeItem(STORAGE_KEY);
+          setPresetState('default');
+          setCustomConfigState(null);
+          return;
+        }
+
+        setPresetState(config.preset);
+        setCustomConfigState(config.customConfig);
+      } catch (error) {
+        console.warn('Failed to parse background config from storage event:', error);
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   // Save config when it changes
@@ -95,12 +141,9 @@ export function BackgroundProvider({ children }: { children: ReactNode }) {
         body.style.setProperty('--custom-bg-image', customConfig.value);
         body.style.setProperty('--custom-bg-overlay', customConfig.overlay || 'transparent');
       } else if (customConfig.type === 'image') {
-        body.style.setProperty('--custom-bg-image', `url("${customConfig.value}")`);
-        body.style.setProperty('--custom-bg-overlay', customConfig.overlay || 'rgba(0, 0, 0, 0.4)');
-        if (customConfig.size) body.style.setProperty('--custom-bg-size', customConfig.size);
-        if (customConfig.position) body.style.setProperty('--custom-bg-position', customConfig.position);
-        if (customConfig.repeat) body.style.setProperty('--custom-bg-repeat', customConfig.repeat);
-        if (customConfig.attachment) body.style.setProperty('--custom-bg-attachment', customConfig.attachment);
+        // Intentionally ignored: background images should only render on the Home screen.
+        // Keep the default theme background for all other routes.
+        body.classList.remove('custom-background');
       }
     } else {
       // Apply preset class
@@ -126,15 +169,12 @@ export function BackgroundProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setBackgroundImage = useCallback((imageUrl: string, overlay?: string) => {
-    setCustomBackground({
-      type: 'image',
-      value: imageUrl,
-      overlay: overlay || 'rgba(0, 0, 0, 0.4)',
-      size: 'cover',
-      position: 'center',
-      repeat: 'no-repeat',
-      attachment: 'fixed',
-    });
+    // Disabled by design: only Home supports background images.
+    console.warn('Global background images are disabled; use the Home background image setting instead.');
+    // Avoid leaving the app in a confusing half-state.
+    setPresetState('default');
+    setCustomConfigState(null);
+    localStorage.removeItem(STORAGE_KEY);
   }, [setCustomBackground]);
 
   return (

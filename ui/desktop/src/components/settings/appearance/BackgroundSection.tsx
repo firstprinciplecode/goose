@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useBackground, BackgroundPreset } from '../../../contexts/BackgroundContext';
-import { Check, Image, Palette, Sparkles, Sun, Moon, Waves, Upload, X } from 'lucide-react';
+import { Check, Palette, Sparkles, Sun, Moon, Waves, Upload, Image, ExternalLink, X } from 'lucide-react';
+import { fileToResizedDataUrl } from '../../../utils/imageDataUrl';
 
 const presets: { id: BackgroundPreset; name: string; icon: React.ReactNode; preview: string }[] = [
   { 
@@ -36,29 +37,125 @@ const presets: { id: BackgroundPreset; name: string; icon: React.ReactNode; prev
 ];
 
 export default function BackgroundSection() {
-  const { preset, customConfig, setPreset, setBackgroundImage, clearCustomBackground } = useBackground();
-  const [imageUrl, setImageUrl] = useState('');
-  const [showUrlInput, setShowUrlInput] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { preset, setPreset } = useBackground();
+  const [homeBgPreview, setHomeBgPreview] = useState<string | null>(null);
+  const [homeBgUrl, setHomeBgUrl] = useState('');
+  const [showHomeBgUrlInput, setShowHomeBgUrlInput] = useState(false);
+  const homeFileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target?.result as string;
-        setBackgroundImage(dataUrl);
-      };
-      reader.readAsDataURL(file);
-    }
+  const HOME_BG_VERSION_KEY = 'home_background_image_version';
+  const HOME_BG_MODE_KEY = 'home_background_mode'; // 'disk' | 'url'
+  const HOME_BG_URL_KEY = 'home_background_url';
+
+  // Load current Home background (preview only). This does NOT affect global app background.
+  useEffect(() => {
+    const load = async () => {
+      const mode = localStorage.getItem(HOME_BG_MODE_KEY);
+      const url = localStorage.getItem(HOME_BG_URL_KEY);
+      if (mode === 'url' && url) {
+        setHomeBgPreview(url);
+        setHomeBgUrl(url);
+        return;
+      }
+
+      const disk = await window.electron.getHomeBackgroundImage();
+      if (disk) {
+        setHomeBgPreview(disk);
+        return;
+      }
+
+      // Legacy fallback (best-effort migrate)
+      const legacy = localStorage.getItem('home_background_image');
+      if (legacy) {
+        setHomeBgPreview(legacy);
+        const res = await window.electron.saveHomeBackgroundImage(legacy);
+        if (res?.success) {
+          localStorage.removeItem('home_background_image');
+          localStorage.setItem(HOME_BG_MODE_KEY, 'disk');
+          localStorage.removeItem(HOME_BG_URL_KEY);
+          localStorage.setItem(HOME_BG_VERSION_KEY, Date.now().toString());
+        }
+        return;
+      }
+
+      setHomeBgPreview(null);
+    };
+
+    void load();
+  }, []);
+
+  const bumpHomeBgVersion = () => {
+    localStorage.setItem(HOME_BG_VERSION_KEY, Date.now().toString());
+    // Same-window notification (Hub listens to this too)
+    window.dispatchEvent(new CustomEvent('background-image-updated'));
   };
 
-  const handleUrlSubmit = () => {
-    if (imageUrl.trim()) {
-      setBackgroundImage(imageUrl.trim());
-      setShowUrlInput(false);
-      setImageUrl('');
-    }
+  const handleHomeBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+
+    void (async () => {
+      try {
+        const dataUrl = await fileToResizedDataUrl(file, {
+          maxDimension: 1920,
+          mimeType: 'image/jpeg',
+          quality: 0.82,
+        });
+
+        const res = await window.electron.saveHomeBackgroundImage(dataUrl);
+        if (!res?.success) {
+          await window.electron.showMessageBox({
+            type: 'error',
+            title: 'Could not save background image',
+            message: 'Failed to save the background image.',
+            detail: res?.error || 'Try a smaller image (or crop it) and upload again.',
+          });
+          return;
+        }
+
+        // Ensure URL mode/legacy are cleared
+        localStorage.removeItem('home_background_image');
+        localStorage.setItem(HOME_BG_MODE_KEY, 'disk');
+        localStorage.removeItem(HOME_BG_URL_KEY);
+        setHomeBgUrl('');
+        setShowHomeBgUrlInput(false);
+
+        setHomeBgPreview(dataUrl);
+        bumpHomeBgVersion();
+      } catch (err) {
+        console.error('Failed to process Home background upload:', err);
+        await window.electron.showMessageBox({
+          type: 'error',
+          title: 'Failed to use image',
+          message: 'We could not process that image.',
+          detail: 'Please try a different image file.',
+        });
+      }
+    })();
+  };
+
+  const handleHomeBgUrlApply = () => {
+    const url = homeBgUrl.trim();
+    if (!url) return;
+    // Home-only: store URL (small) and render it only on Hub
+    localStorage.setItem(HOME_BG_MODE_KEY, 'url');
+    localStorage.setItem(HOME_BG_URL_KEY, url);
+    localStorage.removeItem('home_background_image');
+    setHomeBgPreview(url);
+    setShowHomeBgUrlInput(false);
+    bumpHomeBgVersion();
+  };
+
+  const handleHomeBgRemove = () => {
+    void window.electron.deleteHomeBackgroundImage();
+    localStorage.removeItem('home_background_image');
+    localStorage.removeItem(HOME_BG_MODE_KEY);
+    localStorage.removeItem(HOME_BG_URL_KEY);
+    setHomeBgUrl('');
+    setShowHomeBgUrlInput(false);
+    setHomeBgPreview(null);
+    bumpHomeBgVersion();
+    if (homeFileInputRef.current) homeFileInputRef.current.value = '';
   };
 
   return (
@@ -66,7 +163,7 @@ export default function BackgroundSection() {
       <div>
         <h3 className="text-sm font-medium text-text-default mb-1">Background</h3>
         <p className="text-xs text-text-muted mb-4">
-          Customize the app background with presets or your own image.
+          Customize the app background with presets.
         </p>
       </div>
 
@@ -98,76 +195,80 @@ export default function BackgroundSection() {
         ))}
       </div>
 
-      {/* Custom Image Section */}
+      {/* Home-only background image */}
       <div className="pt-4 border-t border-white/10">
-        <h4 className="text-sm font-medium text-text-default mb-3 flex items-center gap-2">
-          <Image className="w-4 h-4" />
-          Custom Image
-        </h4>
-        
+        <h4 className="text-sm font-medium text-text-default mb-1">Home page background image</h4>
+        <p className="text-xs text-text-muted mb-3">
+          Shows only on the Home screen. Chat/Team keep the default background.
+        </p>
+
         <div className="flex gap-2">
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => homeFileInputRef.current?.click()}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-sm text-text-default"
+            type="button"
           >
             <Upload className="w-4 h-4" />
-            Upload Image
+            Upload
           </button>
           <button
-            onClick={() => setShowUrlInput(!showUrlInput)}
+            onClick={() => setShowHomeBgUrlInput((v) => !v)}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-sm text-text-default"
+            type="button"
           >
-            <Image className="w-4 h-4" />
+            <ExternalLink className="w-4 h-4" />
             From URL
           </button>
+          {homeBgPreview && (
+            <button
+              onClick={handleHomeBgRemove}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-sm text-text-default"
+              type="button"
+              title="Remove"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         <input
-          ref={fileInputRef}
+          ref={homeFileInputRef}
           type="file"
           accept="image/*"
-          onChange={handleFileSelect}
+          onChange={handleHomeBgUpload}
           className="hidden"
         />
 
-        {showUrlInput && (
+        {showHomeBgUrlInput && (
           <div className="mt-3 flex gap-2">
-            <input
-              type="text"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              className="flex-1 px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-sm text-text-default placeholder:text-text-muted focus:outline-none focus:border-white/30"
-              onKeyDown={(e) => e.key === 'Enter' && handleUrlSubmit()}
-            />
+            <div className="relative flex-1">
+              <Image className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={homeBgUrl}
+                onChange={(e) => setHomeBgUrl(e.target.value)}
+                placeholder="https://example.com/image.jpg"
+                className="w-full pl-9 pr-3 py-2 rounded-lg border border-white/10 bg-white/5 text-sm text-text-default placeholder:text-text-muted focus:outline-none focus:border-white/30"
+                onKeyDown={(e) => e.key === 'Enter' && handleHomeBgUrlApply()}
+              />
+            </div>
             <button
-              onClick={handleUrlSubmit}
+              onClick={handleHomeBgUrlApply}
               className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm text-text-default transition-colors"
+              type="button"
             >
               Apply
             </button>
           </div>
         )}
 
-        {/* Current Custom Background Preview */}
-        {preset === 'custom' && customConfig && (
-          <div className="mt-4 p-3 rounded-lg border border-white/10 bg-white/5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-text-muted">Current custom background</span>
-              <button
-                onClick={clearCustomBackground}
-                className="p-1 rounded hover:bg-white/10 transition-colors"
-                title="Remove custom background"
-              >
-                <X className="w-4 h-4 text-text-muted" />
-              </button>
-            </div>
-            {customConfig.type === 'image' && (
-              <div 
-                className="w-full h-20 rounded-md bg-cover bg-center border border-white/10"
-                style={{ backgroundImage: `url("${customConfig.value}")` }}
-              />
-            )}
+        {homeBgPreview && (
+          <div className="mt-4 rounded-lg overflow-hidden border border-white/10">
+            <img
+              src={homeBgPreview}
+              alt="Home background preview"
+              className="w-full h-24 object-cover"
+            />
           </div>
         )}
       </div>

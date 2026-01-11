@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { TabbedChatContainer } from './TabbedChatContainer';
 import { ViewOptions } from '../utils/navigationUtils';
 import { ContextManagerProvider } from './context_management/ContextManager';
 import { useNavigation } from './Layout/AppLayout';
 import { useTabContext } from '../contexts/TabContext';
+import { unifiedSessionService } from '../services/UnifiedSessionService';
 
 interface TabbedPairRouteProps {
   setIsGoosehintsModalOpen: (isOpen: boolean) => void;
@@ -18,10 +19,13 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
   const routeState = location.state as ViewOptions | undefined;
   const initialMessage = routeState?.initialMessage;
   const { isNavExpanded } = useNavigation();
-  const { openExistingSession, openMatrixChat, handleNewTab } = useTabContext();
+  const { openExistingSession, openMatrixChat, handleNewTab, tabStates } = useTabContext();
 
   // Track if we've already handled the initial message to prevent duplicate handling
   const [hasHandledInitialMessage, setHasHandledInitialMessage] = React.useState(false);
+  
+  // Track if we've already auto-opened sessions to prevent re-opening on every navigation
+  const hasAutoOpenedRef = useRef(false);
 
   // Handle initial message from Hub - create a new tab with the message
   useEffect(() => {
@@ -43,7 +47,14 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
     const resumeSessionId = searchParams.get('resumeSessionId');
     if (resumeSessionId) {
       console.log('📂 Resuming session from URL parameter:', resumeSessionId);
-      openExistingSession(resumeSessionId);
+      openExistingSession(resumeSessionId).then((result) => {
+        if (!result.success && result.error === 'FOLDER_MISMATCH') {
+          // Folder mismatch - could show a toast or handle silently
+          console.warn('📂 Folder mismatch when resuming from URL, session not opened');
+        }
+      }).catch((error) => {
+        console.error('📂 Failed to resume session from URL:', error);
+      });
       
       // Clear the URL parameter to prevent re-opening on refresh
       const newSearchParams = new URLSearchParams(searchParams);
@@ -68,6 +79,68 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
       window.removeEventListener('create-matrix-tab', handleCreateMatrixTab as EventListener);
     };
   }, [openMatrixChat]);
+
+  // Auto-open latest 3-4 sessions for the current folder
+  useEffect(() => {
+    // Only run once per mount, and only if we haven't already auto-opened
+    if (hasAutoOpenedRef.current) {
+      return;
+    }
+
+    // Skip if there's an active conversation (user is mid-chat)
+    const hasActiveConversation = tabStates.some(ts => ts.chat.messages.length > 0);
+    if (hasActiveConversation) {
+      console.log('📂 Skipping auto-open - user has active conversation');
+      return;
+    }
+
+    const autoOpenSessions = async () => {
+      try {
+        // Get current window folder
+        const currentFolder = window.appConfig.get('GOOSE_WORKING_DIR') as string;
+        if (!currentFolder) {
+          console.log('📂 No current folder, skipping auto-open');
+          return;
+        }
+
+        // Get latest sessions for this folder
+        const latestSessions = await unifiedSessionService.getLatestSessionsForFolder(currentFolder, 4);
+        
+        // Filter out sessions that are already open in tabs
+        const openSessionIds = new Set(tabStates.map(ts => ts.tab.sessionId));
+        const sessionsToOpen = latestSessions.filter(s => !openSessionIds.has(s.id));
+
+        if (sessionsToOpen.length === 0) {
+          console.log('📂 No new sessions to auto-open');
+          hasAutoOpenedRef.current = true;
+          return;
+        }
+
+        console.log(`📂 Auto-opening ${sessionsToOpen.length} latest sessions for folder:`, currentFolder);
+
+        // Open each session as a tab (silently, no toast)
+        for (const session of sessionsToOpen) {
+          const result = await openExistingSession(session.id, session.description, undefined, session);
+          if (!result.success && result.error === 'FOLDER_MISMATCH') {
+            // Shouldn't happen since we filtered by folder, but skip if it does
+            console.warn('📂 Unexpected folder mismatch during auto-open:', session.id);
+          }
+        }
+
+        hasAutoOpenedRef.current = true;
+      } catch (error) {
+        console.error('📂 Error auto-opening sessions:', error);
+        hasAutoOpenedRef.current = true; // Don't retry on error
+      }
+    };
+
+    // Small delay to ensure everything is initialized
+    const timeoutId = setTimeout(() => {
+      autoOpenSessions();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [openExistingSession, tabStates]);
 
   const handleMessageSubmit = (message: string, tabId: string) => {
     console.log('Message submitted in tab:', tabId, message);

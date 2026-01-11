@@ -311,6 +311,46 @@ export class UnifiedSessionService {
       return false;
     }
   }
+
+  /**
+   * Get latest sessions for a specific folder, sorted by updated_at DESC
+   * Excludes Matrix sessions and sessions without messages
+   */
+  public async getLatestSessionsForFolder(folder: string, limit: number = 4): Promise<Session[]> {
+    try {
+      const { sessions } = await this.getAllSessions();
+      
+      // Normalize folder for comparison (remove trailing slashes)
+      const normalizedFolder = folder.replace(/\/$/, '');
+      
+      // Filter sessions:
+      // 1. Same folder (normalized)
+      // 2. Has messages (message_count > 0)
+      // 3. Not Matrix sessions (Matrix sessions have special working_dir like "Direct Message")
+      // 4. Not Matrix session IDs (starts with '!')
+      const filtered = sessions.filter((session) => {
+        const sessionFolder = session.working_dir?.replace(/\/$/, '') || '';
+        const isMatrix = matrixSessionService.isMatrixSession(session.id) || session.id.startsWith('!');
+        const hasMessages = session.message_count > 0;
+        const folderMatch = sessionFolder === normalizedFolder;
+        
+        return folderMatch && hasMessages && !isMatrix;
+      });
+      
+      // Sort by updated_at DESC (most recent first)
+      filtered.sort((a, b) => {
+        const dateA = new Date(a.updated_at).getTime();
+        const dateB = new Date(b.updated_at).getTime();
+        return dateB - dateA;
+      });
+      
+      // Return top N
+      return filtered.slice(0, limit);
+    } catch (error) {
+      console.error('📋 UnifiedSessionService: Error getting latest sessions for folder:', error);
+      return [];
+    }
+  }
 }
 
 // Export singleton instance

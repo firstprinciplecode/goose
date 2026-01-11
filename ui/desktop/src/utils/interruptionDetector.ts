@@ -53,6 +53,8 @@ export const INTERRUPTION_KEYWORDS: InterruptionKeyword[] = [
   {
     keyword: 'like',
     variations: [
+      // NOTE: Do not include the bare word "like" as an interruption trigger; it's too common
+      // and causes false positives in short inputs (e.g. "like this").
       'like', 'for example', 'for instance', 'such as', 'e.g.', 'including',
       'specifically', 'in particular', 'say', 'let\'s say'
     ],
@@ -104,6 +106,9 @@ export function detectInterruption(input: string): InterruptionMatch | null {
   // Check for matches at the beginning of input (high confidence)
   for (const keyword of INTERRUPTION_KEYWORDS) {
     for (const variation of keyword.variations) {
+      // "like ..." is too common in natural language; don't treat it as a high-confidence interruption.
+      // Keep it for exact-match and low-confidence detection, but skip the "startsWith" rule.
+      if (keyword.keyword === 'like' && variation === 'like') continue;
       if (
         normalizedInput.startsWith(variation + ' ') ||
         normalizedInput.startsWith(variation + ',')

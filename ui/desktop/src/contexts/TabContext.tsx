@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, Rea
 import { Tab, TabSidecarState, TabSidecarView } from '../components/TabBar';
 import { ChatType } from '../types/chat';
 import { generateSessionId } from '../utils/sessionUtils';
-import { getSession, updateSessionDescription, startAgent, deleteSession } from '../api';
+import { getSession, updateSessionDescription, startAgent, deleteSession, Session } from '../api';
 import { sessionMappingService } from '../services/SessionMappingService';
 import { matrixService } from '../services/MatrixService';
 import { useSupabase } from './SupabaseContext';
@@ -10,6 +10,8 @@ import {
   getSessionByGooseId,
   migrateCollaborativeSessionGooseSessionId,
 } from '../services/collaborativeSessionService';
+import { unifiedSessionService } from '../services/UnifiedSessionService';
+import { matrixSessionService } from '../services/MatrixSessionService';
 
 interface TabState {
   tab: Tab;
@@ -31,7 +33,7 @@ interface TabContextType {
   clearTabState: () => void;
   syncTabTitleWithBackend: (tabId: string) => Promise<void>;
   updateTabTitleFromMessage: (tabId: string, message: string | any) => Promise<void>;
-  openExistingSession: (sessionId: string, title?: string, isCollaborativeJoin?: boolean) => void;
+  openExistingSession: (sessionId: string, title?: string, isCollaborativeJoin?: boolean, session?: Session) => Promise<{ success: boolean; session?: Session; error?: string }>;
   updateSessionId: (tabId: string, newSessionId: string) => void;
   // Tab title update (without touching messages)
   updateTabTitle: (tabId: string, title: string) => void;
@@ -609,8 +611,57 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     }
   }, [tabStates]);
 
+  // Helper function to check if folder matches and fetch session if needed
+  const checkFolderMatch = useCallback(async (sessionId: string, providedSession?: Session): Promise<{ match: boolean; session: Session | null; error?: string }> => {
+    // Skip folder check for Matrix sessions (they have special working_dir like "Direct Message")
+    if (matrixSessionService.isMatrixSession(sessionId) || sessionId.startsWith('!')) {
+      console.log('📂 Skipping folder check for Matrix session:', sessionId);
+      return { match: true, session: providedSession || null };
+    }
+
+    // Skip folder check for temporary/new sessions
+    if (sessionId.startsWith('temp_') || sessionId.startsWith('new_')) {
+      console.log('📂 Skipping folder check for temporary/new session:', sessionId);
+      return { match: true, session: providedSession || null };
+    }
+
+    // Fetch session if not provided
+    let sessionToCheck = providedSession;
+    if (!sessionToCheck) {
+      sessionToCheck = await unifiedSessionService.getSessionById(sessionId);
+      if (!sessionToCheck) {
+        return { match: false, session: null, error: 'Session not found' };
+      }
+    }
+
+    // Get current window folder
+    const currentFolder = window.appConfig.get('GOOSE_WORKING_DIR') as string;
+    const sessionFolder = sessionToCheck.working_dir;
+
+    // Handle empty working_dir gracefully (treat as match to allow opening)
+    if (!sessionFolder || !currentFolder) {
+      console.log('📂 Empty working_dir, allowing session open:', { sessionFolder, currentFolder });
+      return { match: true, session: sessionToCheck };
+    }
+
+    // Normalize paths for comparison (remove trailing slashes)
+    const normalizedCurrent = currentFolder.replace(/\/$/, '');
+    const normalizedSession = sessionFolder.replace(/\/$/, '');
+
+    const match = normalizedCurrent === normalizedSession;
+    
+    console.log('📂 Folder check:', {
+      sessionId,
+      currentFolder: normalizedCurrent,
+      sessionFolder: normalizedSession,
+      match
+    });
+
+    return { match, session: sessionToCheck };
+  }, []);
+
   // Open an existing session in a new tab or switch to it if already open
-  const openExistingSession = useCallback(async (sessionId: string, title?: string, isCollaborativeJoin?: boolean) => {
+  const openExistingSession = useCallback(async (sessionId: string, title?: string, isCollaborativeJoin?: boolean, providedSession?: Session): Promise<{ success: boolean; session?: Session; error?: string }> => {
     console.log('📂 Opening existing session:', { sessionId, title, isCollaborativeJoin });
 
     // Check if session is already open in a tab
@@ -618,8 +669,25 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     if (existingTab) {
       console.log('📂 Session already open, switching to existing tab:', existingTab.tab.id);
       setActiveTabId(existingTab.tab.id);
-      return;
+      return { success: true };
     }
+
+    // Check folder match
+    const folderCheck = await checkFolderMatch(sessionId, providedSession);
+    if (!folderCheck.match) {
+      console.log('📂 Folder mismatch detected:', {
+        sessionId,
+        sessionFolder: folderCheck.session?.working_dir,
+        currentFolder: window.appConfig.get('GOOSE_WORKING_DIR') as string
+      });
+      return { 
+        success: false, 
+        session: folderCheck.session || undefined, 
+        error: 'FOLDER_MISMATCH' 
+      };
+    }
+
+    const session = folderCheck.session || providedSession;
 
     // CRITICAL: Check if this is a Matrix session by looking up Matrix metadata
     // BUT ONLY if the user explicitly requested a Matrix session
@@ -710,7 +778,9 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
         });
       }, 100);
     }
-  }, [tabStates, syncTabTitleWithBackend]);
+
+    return { success: true, session };
+  }, [tabStates, syncTabTitleWithBackend, checkFolderMatch]);
 
   // Update session ID for a tab (used when a new session gets a real backend ID)
   const updateSessionId = useCallback((tabId: string, newSessionId: string) => {

@@ -1,22 +1,77 @@
 import React from 'react';
 import { Parameter } from '../../recipe';
+import { AlertTriangle, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface ParameterInputProps {
   parameter: Parameter;
   onChange: (name: string, updatedParameter: Partial<Parameter>) => void;
+  isUnused?: boolean;
+  isExpanded?: boolean;
+  onToggleExpanded?: (parameterKey: string) => void;
+  onDelete?: (parameterKey: string) => void;
 }
 
-const ParameterInput: React.FC<ParameterInputProps> = ({ parameter, onChange }) => {
+const ParameterInput: React.FC<ParameterInputProps> = ({
+  parameter,
+  onChange,
+  isUnused = false,
+  isExpanded = true,
+  onToggleExpanded,
+  onDelete,
+}) => {
   // All values are derived directly from props, maintaining the controlled component pattern
   const { key, description, requirement } = parameter;
   const defaultValue = parameter.default || '';
 
   return (
     <div className="parameter-input my-4 p-4 border rounded-lg bg-bgSubtle shadow-sm">
-      <h3 className="text-lg font-bold text-textProminent mb-4">
-        Parameter:{' '}
-        <code className="bg-background-default px-2 py-1 rounded-md">{parameter.key}</code>
-      </h3>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <button
+          type="button"
+          className="flex items-center gap-2 text-lg font-bold text-textProminent"
+          onClick={() => onToggleExpanded?.(parameter.key)}
+        >
+          {onToggleExpanded ? (
+            isExpanded ? (
+              <ChevronDown className="h-4 w-4 opacity-70" />
+            ) : (
+              <ChevronRight className="h-4 w-4 opacity-70" />
+            )
+          ) : null}
+          <span>
+            Parameter:{' '}
+            <code className="bg-background-default px-2 py-1 rounded-md">{parameter.key}</code>
+          </span>
+        </button>
+
+        <div className="flex items-center gap-2">
+          {isUnused && (
+            <span className="inline-flex items-center gap-1 text-orange-500 text-xs font-medium">
+              <AlertTriangle className="h-3 w-3" />
+              Unused
+            </span>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              title="Delete parameter"
+              className="inline-flex items-center justify-center h-8 w-8 rounded-full hover:bg-background-muted transition-colors"
+              onClick={() => onDelete(parameter.key)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!isExpanded && (
+        <p className="text-sm text-textSubtle">
+          {description || 'No description'}
+        </p>
+      )}
+
+      {isExpanded && (
+        <>
 
       <div className="mb-4">
         <label className="block text-md text-textStandard mb-2 font-semibold">description</label>
@@ -106,6 +161,8 @@ const ParameterInput: React.FC<ParameterInputProps> = ({ parameter, onChange }) 
             Enter each option on a new line. These will be shown as dropdown choices.
           </p>
         </div>
+      )}
+        </>
       )}
     </div>
   );

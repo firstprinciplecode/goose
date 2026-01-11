@@ -8,6 +8,15 @@ import { screen, render, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AppInner } from './App';
 
+// AppInner uses TabContext for notification-driven Matrix navigation.
+// In this unit test we don't need real tab behavior; we just need the hook not to throw.
+vi.mock('./contexts/TabContext', () => ({
+  TabProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useTabContext: () => ({
+    openMatrixChat: vi.fn(),
+  }),
+}));
+
 // Set up globals for jsdom
 Object.defineProperty(window, 'location', {
   value: {

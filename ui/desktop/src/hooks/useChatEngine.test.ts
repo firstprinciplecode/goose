@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChatEngine } from './useChatEngine';
 import { Message, getTextContent } from '../types/message';
@@ -68,7 +68,7 @@ describe('useChatEngine', () => {
   });
 
   describe('onMessageUpdate', () => {
-    it('should truncate history and append the updated message when a message is edited', () => {
+    it('should truncate history and append the updated message when a message is edited', async () => {
       // --- 1. ARRANGE ---
       const initialMessages: Message[] = [
         { id: '1', role: 'user', content: [{ type: 'text', text: 'First message' }], created: 0 },
@@ -143,7 +143,10 @@ describe('useChatEngine', () => {
       expect(mockSetMessages).toHaveBeenCalledWith(expectedTruncatedHistory);
 
       // Verify that append was called with the new message
-      expect(mockAppend).toHaveBeenCalledTimes(1);
+      // Append happens in an effect after messages are truncated.
+      await waitFor(() => {
+        expect(mockAppend).toHaveBeenCalledTimes(1);
+      });
       const appendedMessage = mockAppend.mock.calls[0][0];
       expect(getTextContent(appendedMessage)).toBe(newContent);
       expect(appendedMessage.role).toBe('user');

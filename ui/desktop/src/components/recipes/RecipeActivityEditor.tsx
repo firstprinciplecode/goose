@@ -4,9 +4,11 @@ import { Button } from '../ui/button';
 export default function RecipeActivityEditor({
   activities,
   setActivities,
+  onBlur,
 }: {
   activities: string[];
   setActivities: (prev: string[]) => void;
+  onBlur?: () => void;
 }) {
   const [newActivity, setNewActivity] = useState('');
   const [messageContent, setMessageContent] = useState('');
@@ -74,6 +76,7 @@ export default function RecipeActivityEditor({
           id="message"
           value={messageContent}
           onChange={(e) => handleMessageChange(e.target.value)}
+          onBlur={onBlur}
           className="w-full px-4 py-3 border rounded-lg bg-background-default text-textStandard placeholder-textPlaceholder focus:outline-none focus:ring-2 focus:ring-borderProminent resize-vertical"
           placeholder="Enter a message for your recipe (supports **bold**, *italic*, `code`, etc.)"
           rows={3}

@@ -154,34 +154,93 @@ export default function Hub({
   const { isConnected, friends } = useMatrix();
   const [backgroundImage, setBackgroundImage] = React.useState<string | null>(null);
   const [showText, setShowText] = React.useState(true);
-  const [blurOpacity, setBlurOpacity] = React.useState(1);
+  const [homeOverlayOpacity, setHomeOverlayOpacity] = React.useState(0);
 
   // Load background image from localStorage
   useEffect(() => {
-    const loadBackgroundImage = () => {
-      const stored = localStorage.getItem('home_background_image');
-      setBackgroundImage(stored);
+    const HOME_BG_VERSION_KEY = 'home_background_image_version';
+    const HOME_BG_MODE_KEY = 'home_background_mode'; // 'disk' | 'url'
+    const HOME_BG_URL_KEY = 'home_background_url';
+
+    const loadBackgroundImage = async () => {
+      // Home-only URL background
+      const mode = localStorage.getItem(HOME_BG_MODE_KEY);
+      const url = localStorage.getItem(HOME_BG_URL_KEY);
+      if (mode === 'url' && url) {
+        setBackgroundImage(url);
+        return;
+      }
+
+      // Prefer disk-backed image (reliable across restarts + avoids localStorage quota)
+      const disk = await window.electron.getHomeBackgroundImage();
+      if (disk) {
+        setBackgroundImage(disk);
+        return;
+      }
+
+      // Legacy fallback
+      const legacy = localStorage.getItem('home_background_image');
+      if (legacy) {
+        setBackgroundImage(legacy);
+        // Best-effort migration to disk
+        const res = await window.electron.saveHomeBackgroundImage(legacy);
+        if (res?.success) {
+          localStorage.removeItem('home_background_image');
+          localStorage.setItem(HOME_BG_MODE_KEY, 'disk');
+          localStorage.removeItem(HOME_BG_URL_KEY);
+          localStorage.setItem(HOME_BG_VERSION_KEY, Date.now().toString());
+        }
+        return;
+      }
+
+      setBackgroundImage(null);
     };
 
     // Load on mount
-    loadBackgroundImage();
+    void loadBackgroundImage();
 
-    // Listen for updates from settings
+    // Listen for updates from settings (same window)
     const handleBackgroundUpdate = () => {
-      loadBackgroundImage();
+      void loadBackgroundImage();
     };
 
     window.addEventListener('background-image-updated', handleBackgroundUpdate);
+    
+    // Cross-window sync: Preferences/Settings may run in a separate Electron window.
+    // storage events fire in *other* windows for the same origin/partition.
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key !== HOME_BG_VERSION_KEY && e.key !== 'home_background_image') return;
+      void loadBackgroundImage();
+    };
+    window.addEventListener('storage', handleStorage);
+
     return () => {
       window.removeEventListener('background-image-updated', handleBackgroundUpdate);
+      window.removeEventListener('storage', handleStorage);
     };
   }, []);
+
+  // Home wallpaper presentation:
+  // Start with the wallpaper at full color, then fade in a darker translucent overlay
+  // to improve foreground contrast without permanently dulling the initial "pop".
+  useEffect(() => {
+    if (!backgroundImage) {
+      setHomeOverlayOpacity(0);
+      return;
+    }
+
+    setHomeOverlayOpacity(0);
+    const t = window.setTimeout(() => {
+      setHomeOverlayOpacity(1);
+    }, 350);
+
+    return () => window.clearTimeout(t);
+  }, [backgroundImage]);
 
   // Fade out blur when text disappears after 5 seconds
   useEffect(() => {
     const hideTextTimer = setTimeout(() => {
       setShowText(false);
-      setBlurOpacity(0); // Fade out blur when text disappears
     }, 5000);
 
     return () => {
@@ -318,18 +377,19 @@ export default function Hub({
             <div 
               className="absolute inset-0 bg-cover bg-center bg-no-repeat"
               style={{ 
-                backgroundImage: `url(${backgroundImage})`,
+                // Quote to safely handle data URLs and special characters.
+                backgroundImage: `url("${backgroundImage}")`,
                 zIndex: 0
               }}
             />
-            {/* Radial blur overlay - creates pixelated blur in center with animation */}
-            <div 
-              className="absolute inset-0 backdrop-blur-md transition-opacity duration-1000"
-              style={{ 
-                maskImage: 'radial-gradient(circle at center, black 0%, black 30%, transparent 50%)',
-                WebkitMaskImage: 'radial-gradient(circle at center, black 0%, black 30%, transparent 50%)',
-                opacity: blurOpacity,
-                zIndex: 0
+            {/* Dark overlay (fades in after initial full-color reveal) */}
+            <div
+              className="absolute inset-0 transition-opacity duration-700 ease-out"
+              style={{
+                zIndex: 1,
+                // Darken significantly, but keep wallpaper visible.
+                backgroundColor: 'rgba(0, 0, 0, 0.55)',
+                opacity: homeOverlayOpacity,
               }}
             />
           </>
@@ -376,7 +436,9 @@ export default function Hub({
                 onFilesProcessed={() => {}}
                 messages={[]}
                 setMessages={() => {}}
-                disableAnimation={false}
+                // Keep the composer out of opacity animations; this improves backdrop blur stability
+                // in Electron/Chromium during resize.
+                disableAnimation={true}
                 sessionCosts={undefined}
                 setIsGoosehintsModalOpen={setIsGoosehintsModalOpen}
                 isExtensionsLoading={isExtensionsLoading}

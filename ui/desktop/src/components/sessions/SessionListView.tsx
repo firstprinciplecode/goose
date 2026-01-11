@@ -33,6 +33,10 @@ import { ConfirmationModal } from '../ui/ConfirmationModal';
 import { Session } from '../../api';
 import { unifiedSessionService } from '../../services/UnifiedSessionService';
 import SessionTimelineView from './SessionTimelineView';
+import { useTabContext } from '../../contexts/TabContext';
+import { useNavigate } from 'react-router-dom';
+import { FolderMismatchModal } from './FolderMismatchModal';
+import { resumeSession } from '../../sessions';
 
 interface EditSessionModalProps {
   session: Session | null;
@@ -204,6 +208,13 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(
     // Delete confirmation modal state
     const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
     const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
+
+    // Folder mismatch modal state
+    const [showFolderMismatchModal, setShowFolderMismatchModal] = useState(false);
+    const [mismatchedSession, setMismatchedSession] = useState<Session | null>(null);
+
+    const { openExistingSession } = useTabContext();
+    const navigate = useNavigate();
 
     // Search state for debouncing
     const [searchTerm, setSearchTerm] = useState('');
@@ -607,6 +618,9 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(
       onDeleteClick: (session: Session) => void;
     }) {
       const [isRegeneratingTitle, setIsRegeneratingTitle] = useState(false);
+      const { openExistingSession } = useTabContext();
+      const navigate = useNavigate();
+
       const handleEditClick = useCallback(
         (e: React.MouseEvent) => {
           e.stopPropagation(); // Prevent card click
@@ -623,9 +637,28 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(
         [onDeleteClick, session]
       );
 
-      const handleCardClick = useCallback(() => {
-        onSelectSession(session.id);
-      }, [session.id]);
+      const handleCardClick = useCallback(async () => {
+        try {
+          // Check folder match first
+          const result = await openExistingSession(session.id, session.description, undefined, session);
+          
+          if (!result.success && result.error === 'FOLDER_MISMATCH') {
+            // Show folder mismatch modal
+            setMismatchedSession(session);
+            setShowFolderMismatchModal(true);
+          } else if (result.success) {
+            // Folder matches, session opened as tab - navigate to chat
+            navigate('/pair');
+          } else {
+            // Other error - fall back to showing session detail view
+            onSelectSession(session.id);
+          }
+        } catch (error) {
+          console.error('Error opening session:', error);
+          // Fall back to showing session detail view
+          onSelectSession(session.id);
+        }
+      }, [session, openExistingSession, navigate, onSelectSession]);
 
       const handleRegenerateTitle = useCallback(async (e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent card click
@@ -1076,6 +1109,27 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(
           onConfirm={handleConfirmDelete}
           onCancel={handleCancelDelete}
         />
+
+        {mismatchedSession && (
+          <FolderMismatchModal
+            isOpen={showFolderMismatchModal}
+            onClose={() => {
+              setShowFolderMismatchModal(false);
+              setMismatchedSession(null);
+            }}
+            sessionFolder={mismatchedSession.working_dir}
+            currentFolder={window.appConfig.get('GOOSE_WORKING_DIR') as string}
+            onOpenInNewWindow={() => {
+              try {
+                resumeSession(mismatchedSession);
+                setShowFolderMismatchModal(false);
+                setMismatchedSession(null);
+              } catch (error) {
+                toast.error(`Could not launch session: ${error instanceof Error ? error.message : error}`);
+              }
+            }}
+          />
+        )}
       </>
     );
   }

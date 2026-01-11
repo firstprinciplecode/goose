@@ -37,7 +37,7 @@ import { AddCustomCommandModal } from './AddCustomCommandModal';
 import { CustomCommand, BUILT_IN_COMMANDS } from '../types/customCommands';
 import EnhancedMentionPopover from './EnhancedMentionPopover';
 import { useSupabase } from '../contexts/SupabaseContext';
-import { useCollaborativeAgentSession } from '../hooks/useCollaborativeAgentSession';
+import type { UseCollaborativeAgentSessionReturn } from '../hooks/useCollaborativeAgentSession';
 import { useTabContext } from '../contexts/TabContext';
 import { 
   createCollaborativeSession, 
@@ -116,6 +116,12 @@ interface ChatInputProps {
   append?: (message: Message) => void;
   isExtensionsLoading?: boolean;
   gooseEnabled?: boolean;
+  /**
+   * Optional: collaborative session state/actions provided by a parent.
+   * When set, ChatInput will use this instead of creating its own collab session manager.
+   * This prevents "console sees message but UI doesn't" issues from having multiple hook instances.
+   */
+  collab?: UseCollaborativeAgentSessionReturn;
 }
 
 export default function ChatInput({
@@ -144,13 +150,106 @@ export default function ChatInput({
   append,
   isExtensionsLoading = false,
   gooseEnabled = true,
+  collab: collabFromParent,
 }: ChatInputProps) {
   // Track the available width for responsive layout
   const [availableWidth, setAvailableWidth] = useState(window.innerWidth);
   const chatInputRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
 
   // Update available width based on container size
   useEffect(() => {
+    let rafId: number | null = null;
+    let resizeDebounceId: number | null = null;
+    let resizingClearId: number | null = null;
+
+    const refreshComposerBackdrop = () => {
+      const el = composerRef.current;
+      if (!el) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInput.tsx:refreshComposerBackdrop',message:'composerRef missing',data:{window:{w:window.innerWidth,h:window.innerHeight}},timestamp:Date.now(),sessionId:'debug-session',runId:'blur-pre',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        return;
+      }
+
+      // #region agent log
+      // One-time-ish environment capability checks (helps diagnose "computed blur but no visual blur")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const __any = window as any;
+      const __reduceTransparency = typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-reduced-transparency: reduce)').matches
+        : null;
+      const __supportsBackdrop = typeof (window as any).CSS?.supports === 'function'
+        ? (window as any).CSS.supports('backdrop-filter', 'blur(2px)') || (window as any).CSS.supports('-webkit-backdrop-filter', 'blur(2px)')
+        : null;
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInput.tsx:env',message:'environment blur capabilities',data:{reduceTransparency:__reduceTransparency,supportsBackdrop:__supportsBackdrop,dpr:window.devicePixelRatio,ua:navigator.userAgent.slice(0,180),hasElectron:Boolean(__any?.electron)},timestamp:Date.now(),sessionId:'debug-session',runId:'blur-pre',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+
+      const before = getComputedStyle(el, '::before') as any;
+      const self = getComputedStyle(el) as any;
+      const rect = el.getBoundingClientRect();
+      const cx = Math.round(rect.left + rect.width / 2);
+      const cy = Math.round(rect.top + rect.height / 2);
+
+      // Probe what is behind the composer by hiding it from hit-testing briefly.
+      // If this shows wallpaper/messages behind, then a missing blur is compositor-level.
+      const prevVis = el.style.visibility;
+      el.style.visibility = 'hidden';
+      const behindWithoutComposer = typeof document.elementsFromPoint === 'function'
+        ? document.elementsFromPoint(cx, cy).slice(0, 12).map((n) => {
+            const e = n as HTMLElement;
+            return {
+              tag: e.tagName,
+              id: (e as any).id || null,
+              class: typeof (e as any).className === 'string' ? (e as any).className : null,
+            };
+          })
+        : [];
+      el.style.visibility = prevVis;
+
+      const behindAll = typeof document.elementsFromPoint === 'function'
+        ? document.elementsFromPoint(cx, cy).slice(0, 15).map((n) => {
+            const e = n as HTMLElement;
+            return {
+              tag: e.tagName,
+              id: (e as any).id || null,
+              class: typeof (e as any).className === 'string' ? (e as any).className : null,
+            };
+          })
+        : [];
+      const behindSummary = {
+        count: behindAll.length,
+        hasBody: behindAll.some((e) => e.tag === 'BODY' || e.tag === 'HTML'),
+        hasScrollArea: behindAll.some((e) => (e.class || '').toLowerCase().includes('scroll')),
+        hasMessage: behindAll.some((e) => (e.class || '').toLowerCase().includes('message')),
+      };
+      const behindNoComposerSummary = {
+        count: behindWithoutComposer.length,
+        hasBody: behindWithoutComposer.some((e) => e.tag === 'BODY' || e.tag === 'HTML'),
+        hasScrollArea: behindWithoutComposer.some((e) => (e.class || '').toLowerCase().includes('scroll')),
+        hasMessage: behindWithoutComposer.some((e) => (e.class || '').toLowerCase().includes('message')),
+        hasBgCover: behindWithoutComposer.some((e) => (e.class || '').toLowerCase().includes('bg-cover')),
+      };
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInput.tsx:refreshComposerBackdrop',message:'composer blur pre-refresh',data:{self:{backdropFilter:self.backdropFilter,webkitBackdropFilter:self.webkitBackdropFilter,backgroundColor:self.backgroundColor,backgroundImage:self.backgroundImage,filter:self.filter,transform:self.transform},before:{content:before.content,backdropFilter:before.backdropFilter,webkitBackdropFilter:before.webkitBackdropFilter,opacity:before.opacity,backgroundColor:before.backgroundColor,backgroundImage:before.backgroundImage,filter:before.filter,transform:before.transform},el:{className:el.className,composerBlurVar:getComputedStyle(el).getPropertyValue('--composer-blur').trim() || null,rect:{x:Math.round(rect.x),y:Math.round(rect.y),w:Math.round(rect.width),h:Math.round(rect.height)}},probe:{x:cx,y:cy,behindSummary,behindNoComposerSummary}},timestamp:Date.now(),sessionId:'debug-session',runId:'blur-pre',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+
+      // Chromium/Electron can drop backdrop-filter compositing after resize.
+      // Toggling a class for one frame forces a repaint and re-applies the blur.
+      // IMPORTANT: do NOT toggle blur to 0px — that creates a visible "no blur" flicker.
+      el.classList.add('backdrop-refresh');
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        el.classList.remove('backdrop-refresh');
+        rafId = null;
+
+        const after = getComputedStyle(el, '::before') as any;
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInput.tsx:refreshComposerBackdrop',message:'composer backdrop post-refresh',data:{after:{backdropFilter:after.backdropFilter,webkitBackdropFilter:after.webkitBackdropFilter,opacity:after.opacity,backgroundColor:after.backgroundColor,filter:after.filter,transform:after.transform},el:{className:el.className,transform:getComputedStyle(el).transform,composerBlurVar:getComputedStyle(el).getPropertyValue('--composer-blur').trim() || null}},timestamp:Date.now(),sessionId:'debug-session',runId:'blur-pre',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+      });
+    };
+
     const updateAvailableWidth = () => {
       if (chatInputRef.current) {
         const containerWidth = chatInputRef.current.offsetWidth;
@@ -165,7 +264,23 @@ export default function ChatInput({
 
     // Listen for window resize
     const handleResize = () => {
+      // While resizing, Chromium may briefly drop backdrop blur rendering.
+      // We mask that by making the surface slightly more opaque during active resize
+      // and only forcing a blur refresh once the resize "settles" (debounced).
+      document.documentElement.classList.add('is-resizing');
+      if (resizingClearId) window.clearTimeout(resizingClearId);
+      resizingClearId = window.setTimeout(() => {
+        document.documentElement.classList.remove('is-resizing');
+      }, 180);
+
       updateAvailableWidth();
+      if (resizeDebounceId) window.clearTimeout(resizeDebounceId);
+      resizeDebounceId = window.setTimeout(() => {
+        refreshComposerBackdrop();
+      }, 120);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInput.tsx:handleResize',message:'ChatInput resize handler ran',data:{availableWidthAfter:chatInputRef.current?.offsetWidth ?? null,window:{w:window.innerWidth,h:window.innerHeight}},timestamp:Date.now(),sessionId:'debug-session',runId:'blur-pre',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
     };
 
     window.addEventListener('resize', handleResize);
@@ -173,7 +288,10 @@ export default function ChatInput({
     // Use ResizeObserver to detect container size changes (when sidecars are added/removed)
     let resizeObserver: ResizeObserver | null = null;
     if (chatInputRef.current) {
-      resizeObserver = new ResizeObserver(updateAvailableWidth);
+      resizeObserver = new ResizeObserver(() => {
+        updateAvailableWidth();
+        refreshComposerBackdrop();
+      });
       resizeObserver.observe(chatInputRef.current);
     }
 
@@ -181,6 +299,15 @@ export default function ChatInput({
       window.removeEventListener('resize', handleResize);
       if (resizeObserver) {
         resizeObserver.disconnect();
+      }
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      if (resizeDebounceId) {
+        window.clearTimeout(resizeDebounceId);
+      }
+      if (resizingClearId) {
+        window.clearTimeout(resizingClearId);
       }
     };
   }, []);
@@ -505,7 +632,41 @@ export default function ChatInput({
   const tabContext = useTabContext();
 
   // Supabase-backed collaborative agent session state for this Goose session
-  const collab = useCollaborativeAgentSession(sessionId ?? undefined);
+  const collab: UseCollaborativeAgentSessionReturn =
+    collabFromParent ||
+    ({
+      state: {
+        session: null,
+        participants: [],
+        messages: [],
+        isCollaborative: false,
+        isHost: false,
+        collaborativeMode: false,
+        isLoading: false,
+        isLoadingMessages: false,
+        error: null,
+        messagesCursor: null,
+        currentUserId: null,
+      },
+      actions: {
+        startSession: async () => {},
+        joinSession: async () => {},
+        joinWithToken: async () => {},
+        leave: async () => {},
+        end: async () => {},
+        sendHumanMessage: async () => {},
+        sendAssistantMessage: async () => {},
+        syncExistingMessages: async () => {},
+        updateTitle: async () => {},
+        toggleCollaborativeMode: async () => {},
+        createInviteLink: async () => '',
+        loadOlderMessages: async () => {},
+        parseEmailMentions: () => [],
+        shouldTriggerAgent: () => false,
+        stripAgentMention: (c: string) => c,
+        refresh: async () => {},
+      },
+    } satisfies UseCollaborativeAgentSessionReturn);
 
   // Track which goose_trigger messages we've already processed on the host
   const processedGooseTriggersRef = useRef<Set<string>>(new Set());
@@ -2190,7 +2351,7 @@ export default function ChatInput({
           </div>
         )}
 
-        <div className="chat-composer-container rounded-3xl">
+        <div ref={composerRef} className="chat-composer-container rounded-3xl">
           {queuedMessages.length > 0 && (
             <MessageQueue
               queuedMessages={queuedMessages}

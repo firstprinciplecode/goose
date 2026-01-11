@@ -40,6 +40,9 @@ import { Session } from '../../api';
 import { convertApiMessageToFrontendMessage } from '../context_management';
 import { sessionMappingService, SessionMappingService } from '../../services/SessionMappingService';
 import { matrixService } from '../../services/MatrixService';
+import { useTabContext } from '../../contexts/TabContext';
+import { useNavigate } from 'react-router-dom';
+import { FolderMismatchModal } from './FolderMismatchModal';
 
 // Helper function to determine if a message is a user message (same as useChatEngine)
 const isUserMessage = (message: Message): boolean => {
@@ -336,6 +339,9 @@ const SessionHistoryView: React.FC<SessionHistoryViewProps> = ({
   const [isSharing, setIsSharing] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [canShare, setCanShare] = useState(false);
+  const [showFolderMismatchModal, setShowFolderMismatchModal] = useState(false);
+  const { openExistingSession } = useTabContext();
+  const navigate = useNavigate();
 
   const messages = (session.conversation || []).map(convertApiMessageToFrontendMessage);
 
@@ -401,9 +407,36 @@ const SessionHistoryView: React.FC<SessionHistoryViewProps> = ({
       });
   };
 
-  const handleLaunchInNewWindow = () => {
+  const handleLaunchInNewWindow = async () => {
+    try {
+      // Check folder match first
+      const result = await openExistingSession(session.id, session.description);
+      
+      if (!result.success && result.error === 'FOLDER_MISMATCH') {
+        // Show folder mismatch modal
+        setShowFolderMismatchModal(true);
+      } else if (result.success) {
+        // Folder matches, session opened as tab - navigate to chat
+        navigate('/pair');
+      } else {
+        // Other error - fall back to opening in new window
+        resumeSession(session);
+      }
+    } catch (error) {
+      console.error('Error opening session:', error);
+      // Fall back to opening in new window
+      try {
+        resumeSession(session);
+      } catch (resumeError) {
+        toast.error(`Could not launch session: ${resumeError instanceof Error ? resumeError.message : resumeError}`);
+      }
+    }
+  };
+
+  const handleOpenInNewWindow = () => {
     try {
       resumeSession(session);
+      setShowFolderMismatchModal(false);
     } catch (error) {
       toast.error(`Could not launch session: ${error instanceof Error ? error.message : error}`);
     }
@@ -543,6 +576,14 @@ const SessionHistoryView: React.FC<SessionHistoryViewProps> = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <FolderMismatchModal
+        isOpen={showFolderMismatchModal}
+        onClose={() => setShowFolderMismatchModal(false)}
+        sessionFolder={session.working_dir}
+        currentFolder={window.appConfig.get('GOOSE_WORKING_DIR') as string}
+        onOpenInNewWindow={handleOpenInNewWindow}
+      />
     </>
   );
 };

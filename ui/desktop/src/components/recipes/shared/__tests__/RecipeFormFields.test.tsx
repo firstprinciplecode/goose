@@ -218,12 +218,12 @@ describe('RecipeFormFields', () => {
 
       // Check that activities section exists
       expect(screen.getByText('Activities')).toBeInTheDocument();
-      expect(screen.getByText('Message')).toBeInTheDocument();
+      expect(screen.getByText('Message (Optional)')).toBeInTheDocument();
       expect(screen.getByText('Activity Buttons')).toBeInTheDocument();
 
       // Check that activity input exists
       const messageInput = screen.getByPlaceholderText(
-        'Enter a user facing introduction message for your recipe (supports **bold**, *italic*, `code`, etc.)'
+        /Enter a message for your recipe/i
       );
       expect(messageInput).toBeInTheDocument();
 

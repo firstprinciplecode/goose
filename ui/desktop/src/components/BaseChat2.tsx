@@ -842,7 +842,10 @@ function BaseChatContent({
         className={`absolute left-0 right-0 bottom-0 z-20 pointer-events-none ${
           disableAnimation ? '' : 'animate-[fadein_400ms_ease-in_forwards]'
         }`}
-        style={{ transform: 'translateZ(0)' }}
+        // NOTE:
+        // We intentionally avoid forcing a composited layer here.
+        // In Electron/Chromium, backdrop-filter inside/under transformed ancestors can
+        // intermittently stop rendering after window resize even though computed styles remain.
       >
         <div className="pointer-events-auto">
           <ChatInput
@@ -850,6 +853,7 @@ function BaseChatContent({
             handleSubmit={handleFormSubmit}
             chatState={chatState}
             onStop={stopStreaming}
+            collab={collab}
             commandHistory={commandHistory}
             initialValue={initialPrompt}
             setView={setView}
@@ -864,7 +868,10 @@ function BaseChatContent({
             onFilesProcessed={() => setDroppedFiles([])} // Clear dropped files after processing
             messages={messages as any}
             setMessages={() => {}} // Placeholder - useChatStream doesn't expose setMessages
-            disableAnimation={disableAnimation}
+            // Keep the composer out of opacity/transition animations.
+            // In Electron/Chromium, backdrop-filter can stop rendering after resize when
+            // the blurred element is inside an opacity-animated subtree (e.g. .page-transition).
+            disableAnimation={true}
             sessionCosts={sessionCosts}
             setIsGoosehintsModalOpen={setIsGoosehintsModalOpen}
             recipeConfig={recipe}

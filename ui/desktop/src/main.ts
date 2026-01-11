@@ -81,6 +81,10 @@ const getErrorMessage = (error: unknown): string =>
 // Define temp directory for pasted images
 const gooseTempDir = path.join(app.getPath('temp'), 'goose-pasted-images');
 
+// Persistent home background image storage (avoids localStorage quota issues)
+const gooseHomeBgDir = path.join(app.getPath('userData'), 'goose-backgrounds');
+const gooseHomeBgBaseName = 'home-background';
+
 // Function to ensure the temporary directory exists
 async function ensureTempDirExists(): Promise<string> {
   try {
@@ -151,6 +155,34 @@ async function ensureTempDirExists(): Promise<string> {
     throw error; // Propagate error
   }
   return gooseTempDir;
+}
+
+async function ensureHomeBgDirExists(): Promise<string> {
+  try {
+    await fs.mkdir(gooseHomeBgDir, { recursive: true });
+  } catch (error) {
+    console.error('[Main] Failed to create home background directory:', gooseHomeBgDir, error);
+  }
+  return gooseHomeBgDir;
+}
+
+async function deleteExistingHomeBgFiles(): Promise<void> {
+  try {
+    await ensureHomeBgDirExists();
+    const files = await fs.readdir(gooseHomeBgDir);
+    const candidates = files.filter((f) => f.startsWith(`${gooseHomeBgBaseName}.`));
+    await Promise.all(
+      candidates.map(async (f) => {
+        try {
+          await fs.rm(path.join(gooseHomeBgDir, f), { force: true });
+        } catch (e) {
+          console.warn('[Main] Failed to delete old home background file:', f, e);
+        }
+      })
+    );
+  } catch {
+    // ignore
+  }
 }
 
 if (started) app.quit();
@@ -2677,6 +2709,101 @@ ipcMain.handle('save-data-url-to-temp', async (_event, dataUrl: string, uniqueId
   } catch (error) {
     console.error(`[Main] Failed to save image to temp for ID ${uniqueId}:`, error);
     return { id: uniqueId, error: error instanceof Error ? error.message : 'Failed to save image' };
+  }
+});
+
+// IPC handler to persist the Home background image to disk (userData)
+ipcMain.handle('save-home-background-image', async (_event, dataUrl: string) => {
+  try {
+    if (!dataUrl || typeof dataUrl !== 'string' || dataUrl.length > 10 * 1024 * 1024) {
+      return { success: false, error: 'Invalid or too large data URL' };
+    }
+
+    const matches = dataUrl.match(/^data:(image\/(png|jpeg|jpg|gif|webp));base64,(.*)$/);
+    if (!matches || matches.length < 4) {
+      return { success: false, error: 'Invalid data URL format or unsupported image type' };
+    }
+
+    const mime = matches[1];
+    const extRaw = matches[2];
+    const base64Data = matches[3];
+
+    if (!base64Data || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64Data)) {
+      return { success: false, error: 'Invalid base64 data' };
+    }
+
+    const buffer = Buffer.from(base64Data, 'base64');
+    if (buffer.length > 5 * 1024 * 1024) {
+      return { success: false, error: 'Image too large (max 5MB)' };
+    }
+
+    const dir = await ensureHomeBgDirExists();
+    const ext = extRaw === 'jpg' ? 'jpeg' : extRaw;
+    const fileName = `${gooseHomeBgBaseName}.${ext}`;
+    const filePath = path.join(dir, fileName);
+
+    const resolvedPath = path.resolve(filePath);
+    const resolvedDir = path.resolve(dir);
+    if (!resolvedPath.startsWith(resolvedDir + path.sep)) {
+      return { success: false, error: 'Invalid file path' };
+    }
+
+    await deleteExistingHomeBgFiles();
+    await fs.writeFile(filePath, buffer);
+    return { success: true, mime };
+  } catch (error) {
+    console.error('[Main] Failed to save home background image:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to save image' };
+  }
+});
+
+ipcMain.handle('get-home-background-image', async () => {
+  try {
+    await ensureHomeBgDirExists();
+    const files = await fs.readdir(gooseHomeBgDir);
+    const candidates = files.filter((f) => f.startsWith(`${gooseHomeBgBaseName}.`));
+    if (candidates.length === 0) return null;
+
+    const preferredOrder = ['jpeg', 'jpg', 'png', 'webp', 'gif'];
+    const picked =
+      preferredOrder
+        .map((ext) => `${gooseHomeBgBaseName}.${ext}`)
+        .find((f) => candidates.includes(f)) ?? candidates[0];
+
+    const filePath = path.join(gooseHomeBgDir, picked);
+    const resolvedPath = path.resolve(filePath);
+    const resolvedDir = path.resolve(gooseHomeBgDir);
+    if (!resolvedPath.startsWith(resolvedDir + path.sep)) return null;
+
+    const stats = await fs.lstat(filePath);
+    if (!stats.isFile()) return null;
+    if (stats.size > 5 * 1024 * 1024) return null;
+
+    const buf = await fs.readFile(filePath);
+    const ext = picked.split('.').pop() || 'jpeg';
+    const mime =
+      ext === 'png'
+        ? 'image/png'
+        : ext === 'gif'
+          ? 'image/gif'
+          : ext === 'webp'
+            ? 'image/webp'
+            : 'image/jpeg';
+
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch (error) {
+    console.error('[Main] Failed to load home background image:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('delete-home-background-image', async () => {
+  try {
+    await deleteExistingHomeBgFiles();
+    return true;
+  } catch (error) {
+    console.error('[Main] Failed to delete home background image:', error);
+    return false;
   }
 });
 

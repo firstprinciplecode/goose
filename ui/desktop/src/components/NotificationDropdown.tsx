@@ -231,7 +231,13 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
       if (invite.goose_session_id) {
         const sessionTitle = invite.session_title || `Collab: ${invite.goose_session_id.slice(0, 8)}`;
         console.log('[NotificationDropdown] 📂 Opening session tab:', invite.goose_session_id, 'title:', sessionTitle, 'isCollaborativeJoin: true');
-        openExistingSession(invite.goose_session_id, sessionTitle, true); // true = isCollaborativeJoin
+        openExistingSession(invite.goose_session_id, sessionTitle, true).then((result) => {
+          if (!result.success && result.error === 'FOLDER_MISMATCH') {
+            console.warn('[NotificationDropdown] Folder mismatch when opening collaborative session');
+          }
+        }).catch((error) => {
+          console.error('[NotificationDropdown] Failed to open session tab:', error);
+        });
       } else {
         console.warn('[NotificationDropdown] No goose_session_id in invite, cannot open tab');
         // Still mark as accepted - the invite was processed

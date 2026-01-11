@@ -879,41 +879,89 @@ p > code.bg-inline-code {
   mix-blend-mode: multiply; /* Blend with background for better visibility */
 }
 
-/* Chat composer with proper backdrop blur - using filter: blur(0) trick for resize stability */
+/* Chat composer backdrop blur (Electron/Chromium-stable)
+ *
+ * Why the pseudo-element:
+ * Chromium/Electron can drop backdrop-filter after window resize / relayout.
+ * Putting the blur on a ::before layer and adding a tiny no-op `filter: blur(0)`
+ * keeps the element in a composited layer more reliably.
+ */
 .chat-composer-container {
-  background-color: rgba(255, 255, 255, 0.3) !important;
-  backdrop-filter: blur(24px) !important;
-  -webkit-backdrop-filter: blur(24px) !important;
-  filter: blur(0) !important; /* Critical: prevents backdrop-filter from disappearing on resize */
-  transform: translateZ(0) !important; /* Force GPU layer */
-  -webkit-transform: translateZ(0) !important;
-  will-change: backdrop-filter, transform !important;
-  isolation: isolate !important;
-  position: relative !important;
-  z-index: 50 !important;
-  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  position: relative;
+  overflow: hidden; /* clip blur + background to rounded corners */
+  /* NOTE: avoid `isolation:isolate` here; it can interfere with backdrop-filter sampling in Electron */
+  --composer-blur: 24px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+
+  /* Apply blur on the element itself (more reliable than ::before in some Electron builds) */
+  /* Match the “chat glass” translucency (e.g. bg-white/60) */
+  background-color: rgba(255, 255, 255, 0.60);
+  backdrop-filter: blur(var(--composer-blur, 24px));
+  -webkit-backdrop-filter: blur(var(--composer-blur, 24px));
+  will-change: backdrop-filter;
 }
 
 .dark .chat-composer-container {
-  background-color: rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  /* Match the “chat glass” translucency (e.g. dark:bg-black/60) */
+  background-color: rgba(0, 0, 0, 0.60);
+}
+
+/* During active resize, Chromium/Electron can briefly drop backdrop blur sampling.
+ * Make the surface more opaque to mask any momentary blur dropout. */
+.is-resizing .chat-composer-container {
+  background-color: rgba(255, 255, 255, 0.82);
+}
+
+.dark.is-resizing .chat-composer-container,
+.is-resizing .dark .chat-composer-container {
+  background-color: rgba(0, 0, 0, 0.82);
+}
+
+.chat-composer-container::before {
+  /* Disable pseudo-element implementation; blur is on the element itself now. */
+  content: none;
+}
+
+.chat-composer-container.backdrop-refresh {
+  /* Tiny delta forces Chromium to re-rasterize the backdrop layer (visually identical). */
+  --composer-blur: 24.001px;
+}
+
+/* Ensure contents sit above the blur layer */
+.chat-composer-container > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* ParticipantsBar with same styling as chat composer */
 .participants-bar-container {
-  background-color: rgba(255, 255, 255, 0.3) !important;
-  backdrop-filter: blur(24px) !important;
-  -webkit-backdrop-filter: blur(24px) !important;
-  filter: blur(0) !important; /* Critical: prevents backdrop-filter from disappearing on resize */
-  transform: translateZ(0) !important; /* Force GPU layer */
-  -webkit-transform: translateZ(0) !important;
-  will-change: backdrop-filter, transform !important;
-  isolation: isolate !important;
-  position: relative !important;
-  z-index: 50 !important;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  --composer-blur: 24px;
 }
 
-.dark .participants-bar-container {
-  background-color: rgba(0, 0, 0, 0.3) !important;
+.participants-bar-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(var(--composer-blur, 24px));
+  -webkit-backdrop-filter: blur(var(--composer-blur, 24px));
+  filter: blur(0);
+  transform: translateZ(0);
+  will-change: backdrop-filter, transform;
+}
+
+.participants-bar-container.backdrop-refresh {
+  --composer-blur: 24.001px;
+}
+
+.dark .participants-bar-container::before {
+  background-color: rgba(0, 0, 0, 0.28);
 }
 

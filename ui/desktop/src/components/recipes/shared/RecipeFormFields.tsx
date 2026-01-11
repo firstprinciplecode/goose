@@ -130,7 +130,8 @@ export function RecipeFormFields({
   ): boolean => {
     const regex = new RegExp(
       `\\{\\{\\s*${paramKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}\\}`,
-      'g'
+      // IMPORTANT: do not use the global flag here; RegExp#test becomes stateful via lastIndex
+      // and can return false negatives on subsequent calls.
     );
     const usedInInstructions = regex.test(instructions);
     const usedInPrompt = prompt ? regex.test(prompt) : false;

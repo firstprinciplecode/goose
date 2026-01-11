@@ -15,6 +15,7 @@ import NavigationCustomizationSettings from './NavigationCustomizationSettings';
 import BlockLogoBlack from './icons/block-lockup_black.png';
 import BlockLogoWhite from './icons/block-lockup_white.png';
 import BackgroundSection from '../appearance/BackgroundSection';
+import { fileToResizedDataUrl } from '../../../utils/imageDataUrl';
 
 interface AppSettingsSectionProps {
   scrollToSection?: string;
@@ -33,8 +34,13 @@ export default function AppSettingsSection({ scrollToSection }: AppSettingsSecti
   const [showPricing, setShowPricing] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [homeBgUrl, setHomeBgUrl] = useState('');
+  const [showHomeBgUrlInput, setShowHomeBgUrlInput] = useState(false);
   const updateSectionRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const HOME_BG_VERSION_KEY = 'home_background_image_version';
+  const HOME_BG_MODE_KEY = 'home_background_mode'; // 'disk' | 'url'
+  const HOME_BG_URL_KEY = 'home_background_url';
   
   // Navigation mode hook
   const { mode: navigationMode } = useNavigationMode();
@@ -221,33 +227,116 @@ export default function AppSettingsSection({ scrollToSection }: AppSettingsSecti
 
   // Load background image on mount
   useEffect(() => {
-    const stored = localStorage.getItem('home_background_image');
-    setBackgroundImage(stored);
+    const load = async () => {
+      const mode = localStorage.getItem(HOME_BG_MODE_KEY);
+      const url = localStorage.getItem(HOME_BG_URL_KEY);
+      if (mode === 'url' && url) {
+        setBackgroundImage(url);
+        setHomeBgUrl(url);
+        return;
+      }
+
+      // Prefer disk-backed storage (reliable across restarts)
+      const disk = await window.electron.getHomeBackgroundImage();
+      if (disk) {
+        setBackgroundImage(disk);
+        return;
+      }
+
+      // Legacy fallback: old localStorage data URL (may fail for large images)
+      const legacy = localStorage.getItem('home_background_image');
+      if (legacy) {
+        setBackgroundImage(legacy);
+        // Best-effort migration to disk
+        const res = await window.electron.saveHomeBackgroundImage(legacy);
+        if (res?.success) {
+          localStorage.removeItem('home_background_image');
+          localStorage.setItem(HOME_BG_MODE_KEY, 'disk');
+          localStorage.removeItem(HOME_BG_URL_KEY);
+          localStorage.setItem(HOME_BG_VERSION_KEY, Date.now().toString());
+        }
+      }
+    };
+
+    void load();
   }, []);
 
   const handleBackgroundImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        setBackgroundImage(dataUrl);
-        localStorage.setItem('home_background_image', dataUrl);
-        // Trigger custom event for Hub to update
-        window.dispatchEvent(new CustomEvent('background-image-updated'));
-      };
-      reader.readAsDataURL(file);
+      void (async () => {
+        try {
+          // Resize/compress to reduce localStorage quota pressure.
+          const dataUrl = await fileToResizedDataUrl(file, {
+            maxDimension: 1920,
+            mimeType: 'image/jpeg',
+            quality: 0.82,
+          });
+
+          const res = await window.electron.saveHomeBackgroundImage(dataUrl);
+          if (!res?.success) {
+            console.error('Failed to persist home background image (disk):', res?.error);
+            await window.electron.showMessageBox({
+              type: 'error',
+              title: 'Could not save background image',
+              message: 'Failed to save the background image.',
+              detail: res?.error || 'Try a smaller image (or crop it) and upload again.',
+            });
+            return;
+          }
+
+          // Ensure legacy storage doesn’t keep a huge data URL around.
+          localStorage.removeItem('home_background_image');
+          localStorage.setItem(HOME_BG_MODE_KEY, 'disk');
+          localStorage.removeItem(HOME_BG_URL_KEY);
+          localStorage.setItem(HOME_BG_VERSION_KEY, Date.now().toString());
+
+          setBackgroundImage(dataUrl);
+
+          // Trigger custom event for Hub to update
+          window.dispatchEvent(new CustomEvent('background-image-updated'));
+        } catch (err) {
+          console.error('Failed to process background image upload:', err);
+          await window.electron.showMessageBox({
+            type: 'error',
+            title: 'Failed to use image',
+            message: 'We could not process that image.',
+            detail: 'Please try a different image file.',
+          });
+        }
+      })();
     }
   };
 
   const handleRemoveBackgroundImage = () => {
     setBackgroundImage(null);
+    // Remove from disk-backed storage
+    void window.electron.deleteHomeBackgroundImage();
+    // Remove legacy key if present
     localStorage.removeItem('home_background_image');
+    // Remove URL mode too
+    localStorage.removeItem(HOME_BG_MODE_KEY);
+    localStorage.removeItem(HOME_BG_URL_KEY);
+    setHomeBgUrl('');
+    setShowHomeBgUrlInput(false);
+    localStorage.setItem(HOME_BG_VERSION_KEY, Date.now().toString());
     // Trigger custom event for Hub to update
     window.dispatchEvent(new CustomEvent('background-image-updated'));
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const handleHomeBgUrlApply = async () => {
+    const url = homeBgUrl.trim();
+    if (!url) return;
+    // Keep it Home-only: store just the URL (small) and let Hub render it.
+    localStorage.setItem(HOME_BG_MODE_KEY, 'url');
+    localStorage.setItem(HOME_BG_URL_KEY, url);
+    localStorage.setItem(HOME_BG_VERSION_KEY, Date.now().toString());
+    setBackgroundImage(url);
+    setShowHomeBgUrlInput(false);
+    window.dispatchEvent(new CustomEvent('background-image-updated'));
   };
 
   return (
@@ -497,6 +586,16 @@ export default function AppSettingsSection({ scrollToSection }: AppSettingsSecti
                 <Image className="w-4 h-4" />
                 {backgroundImage ? 'Change' : 'Upload'}
               </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowHomeBgUrlInput((v) => !v)}
+                className="flex items-center gap-2"
+                type="button"
+              >
+                <ExternalLink size={14} />
+                From URL
+              </Button>
               {backgroundImage && (
                 <Button
                   variant="ghost"
@@ -510,6 +609,21 @@ export default function AppSettingsSection({ scrollToSection }: AppSettingsSecti
               )}
             </div>
           </div>
+          {showHomeBgUrlInput && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={homeBgUrl}
+                onChange={(e) => setHomeBgUrl(e.target.value)}
+                placeholder="https://example.com/image.jpg"
+                className="flex-1 px-3 py-2 rounded-lg border border-border-default bg-background-default text-sm text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong"
+                onKeyDown={(e) => e.key === 'Enter' && void handleHomeBgUrlApply()}
+              />
+              <Button variant="secondary" size="sm" onClick={() => void handleHomeBgUrlApply()} type="button">
+                Apply
+              </Button>
+            </div>
+          )}
           {backgroundImage && (
             <div className="mt-4 rounded-lg overflow-hidden border border-border-default">
               <img

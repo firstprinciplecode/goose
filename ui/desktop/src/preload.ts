@@ -33,6 +33,12 @@ interface SaveDataUrlResponse {
   error?: string;
 }
 
+interface SaveHomeBackgroundImageResponse {
+  success: boolean;
+  error?: string;
+  mime?: string;
+}
+
 const config = JSON.parse(process.argv.find((arg) => arg.startsWith('{')) || '{}');
 
 interface UpdaterEvent {
@@ -103,6 +109,10 @@ type ElectronAPI = {
   // Functions for image pasting
   saveDataUrlToTemp: (dataUrl: string, uniqueId: string) => Promise<SaveDataUrlResponse>;
   deleteTempFile: (filePath: string) => void;
+  // Home background persistence (disk-backed)
+  saveHomeBackgroundImage: (dataUrl: string) => Promise<SaveHomeBackgroundImageResponse>;
+  getHomeBackgroundImage: () => Promise<string | null>;
+  deleteHomeBackgroundImage: () => Promise<boolean>;
   // Function for opening external URLs securely
   openExternal: (url: string) => Promise<void>;
   // Function to serve temp images
@@ -287,6 +297,15 @@ const electronAPI: ElectronAPI = {
   },
   saveDataUrlToTemp: (dataUrl: string, uniqueId: string): Promise<SaveDataUrlResponse> => {
     return ipcRenderer.invoke('save-data-url-to-temp', dataUrl, uniqueId);
+  },
+  saveHomeBackgroundImage: (dataUrl: string): Promise<SaveHomeBackgroundImageResponse> => {
+    return ipcRenderer.invoke('save-home-background-image', dataUrl);
+  },
+  getHomeBackgroundImage: (): Promise<string | null> => {
+    return ipcRenderer.invoke('get-home-background-image');
+  },
+  deleteHomeBackgroundImage: (): Promise<boolean> => {
+    return ipcRenderer.invoke('delete-home-background-image');
   },
   deleteTempFile: (filePath: string): void => {
     ipcRenderer.send('delete-temp-file', filePath);
