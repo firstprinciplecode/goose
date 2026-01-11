@@ -113,6 +113,25 @@ function BaseChatContent({
     return activeOthers.length > 0;
   }, [isCollaborativeJoin, collab.state.isCollaborative, collab.state.participants, collab.state.currentUserId]);
 
+  // For the host agent: provide full collaborative context to useChatStream so @goose answers
+  // have the correct shared conversation history. Keep this conversion simple and stable:
+  // it's only used as prompt context, not for display.
+  const agentContextMessages = useMemo(() => {
+    if (!collab.state.isCollaborative) return undefined;
+    const converted: Message[] = collab.state.messages.map((m) => ({
+      id: m.id,
+      role: m.message_type === 'assistant' ? 'assistant' : 'user',
+      created: Math.floor(new Date(m.created_at).getTime() / 1000),
+      content: [{ type: 'text', text: m.content }],
+    }));
+    converted.sort((a, b) => {
+      const aTime = typeof a.created === 'number' ? a.created : 0;
+      const bTime = typeof b.created === 'number' ? b.created : 0;
+      return aTime - bTime;
+    });
+    return converted;
+  }, [collab.state.isCollaborative, collab.state.messages]);
+
   const {
     session,
     messages,
@@ -133,6 +152,7 @@ function BaseChatContent({
     matrixRoomId, // Pass Matrix room ID for loading historical messages
     isCollaborativeJoin, // Joining a collaborative session - disable Goose auto-response
     gooseMentionOnly,
+    agentContextMessages,
   });
   
   // Get tab context for accessing tab title
@@ -231,6 +251,8 @@ function BaseChatContent({
     
     return converted;
   }, [collab.state.currentUserId]);
+
+  // (agentContextMessages is computed above, before useChatStream is called)
 
   // Determine which messages to display based on collaboration mode
   // In collab mode: Supabase is the source of truth (Teams-like)

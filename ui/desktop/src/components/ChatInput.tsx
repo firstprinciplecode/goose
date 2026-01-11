@@ -681,11 +681,14 @@ export default function ChatInput({
 
       processedGooseTriggersRef.current.add(msg.id);
 
-      const stripped = collab.actions.stripAgentMention(msg.content).trim();
-      if (!stripped) continue;
+      // IMPORTANT: keep the @goose mention in the message we send into the stream layer.
+      // The host stream runs in mention-only mode during collaboration and will skip AI
+      // if @goose is not present.
+      const content = msg.content?.trim();
+      if (!content) continue;
 
       handleSubmit(
-        new CustomEvent('submit', { detail: { value: stripped } }) as unknown as React.FormEvent
+        new CustomEvent('submit', { detail: { value: content } }) as unknown as React.FormEvent
       );
     }
   }, [

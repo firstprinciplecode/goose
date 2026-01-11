@@ -176,6 +176,7 @@ interface UseChatStreamProps {
   matrixRoomId?: string; // Matrix room ID for loading historical messages
   isCollaborativeJoin?: boolean; // Flag to indicate this is joining a collaborative session (Goose disabled initially)
   gooseMentionOnly?: boolean; // When true: Goose only responds if message includes @goose (no persistent enabling)
+  agentContextMessages?: Message[]; // Optional: full conversation context to send to the agent (e.g. Supabase collab history)
 }
 
 interface UseChatStreamReturn {
@@ -348,6 +349,7 @@ export function useChatStream({
   matrixRoomId,
   isCollaborativeJoin = false,
   gooseMentionOnly = false,
+  agentContextMessages,
 }: UseChatStreamProps): UseChatStreamReturn {
   
   // Debug logging for Matrix parameters
@@ -845,7 +847,8 @@ export function useChatStream({
         return contextParts.join('\n');
       }
       
-      const currentMessages = [...messagesRef.current, createUserMessage(messageWithContext)];
+      const newUserMsg = createUserMessage(messageWithContext);
+      const currentMessages = [...messagesRef.current, newUserMsg];
       setMessagesAndLog(currentMessages, 'user-entered');
 
       // Update goose enabled state if it changed (skip in mention-only mode; it's forced off)
@@ -871,14 +874,19 @@ export function useChatStream({
         return;
       }
 
-      // In mention-only mode, ChatInput may include `@goose` to signal a one-shot trigger.
-      // Keep `@goose` in the user-visible message (so humans can read it), but strip it from
-      // the payload we send to the agent to avoid polluting the prompt.
+      // Build the message list we send to the agent.
+      // In collaborative mode, pass the full shared history so the host agent responds with context.
+      const baseForAgent =
+        Array.isArray(agentContextMessages) && agentContextMessages.length > 0
+          ? agentContextMessages
+          : messagesRef.current;
+
       const agentMessages = (() => {
+        const withUser = [...baseForAgent, newUserMsg];
         const shouldStrip = gooseMentionOnly || /@goose\b/i.test(userMessage);
-        if (!shouldStrip) return currentMessages;
-        const last = currentMessages[currentMessages.length - 1];
-        if (!last) return currentMessages;
+        if (!shouldStrip) return withUser;
+        const last = withUser[withUser.length - 1];
+        if (!last) return withUser;
         const newLast: Message = {
           ...last,
           content: Array.isArray(last.content)
@@ -889,7 +897,7 @@ export function useChatStream({
               })
             : last.content,
         };
-        return [...currentMessages.slice(0, -1), newLast];
+        return [...withUser.slice(0, -1), newLast];
       })();
 
       // If stripping @goose results in an empty user message, don't hit the agent.
@@ -1078,7 +1086,7 @@ export function useChatStream({
         }
       }
     },
-    [sessionId, session, gooseEnabled, gooseMentionOnly, setMessagesAndLog, onFinish, onSessionIdChange]
+    [sessionId, session, gooseEnabled, gooseMentionOnly, agentContextMessages, setMessagesAndLog, onFinish, onSessionIdChange]
   );
 
   const setRecipeUserParams = useCallback(
