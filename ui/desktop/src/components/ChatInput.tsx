@@ -1670,9 +1670,14 @@ export default function ChatInput({
           : collab.state.isHost &&
             (!collab.state.collaborativeMode || collab.actions.shouldTriggerAgent(textToSend));
 
+        // IMPORTANT:
+        // - In collab mode, `useChatStream` may be running in mention-only mode.
+        // - If we strip `@goose` before calling `handleSubmit`, the stream layer won't see the mention
+        //   and will skip the AI call (forcing users to "toggle Goose on").
+        // So we keep `@goose` in the stream trigger text, and let the stream/backend strip it later.
         const agentTextToSend =
           collab.state.isCollaborative && collab.state.collaborativeMode
-            ? collab.actions.stripAgentMention(textToSend).trim()
+            ? textToSend
             : textToSend;
 
         if (shouldTriggerAgent && agentTextToSend) {

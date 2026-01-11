@@ -871,6 +871,45 @@ export function useChatStream({
         return;
       }
 
+      // In mention-only mode, ChatInput may include `@goose` to signal a one-shot trigger.
+      // Keep `@goose` in the user-visible message (so humans can read it), but strip it from
+      // the payload we send to the agent to avoid polluting the prompt.
+      const agentMessages = (() => {
+        const shouldStrip = gooseMentionOnly || /@goose\b/i.test(userMessage);
+        if (!shouldStrip) return currentMessages;
+        const last = currentMessages[currentMessages.length - 1];
+        if (!last) return currentMessages;
+        const newLast: Message = {
+          ...last,
+          content: Array.isArray(last.content)
+            ? last.content.map((c) => {
+                if (!c || c.type !== 'text') return c;
+                const text = (c.text || '').replace(/@goose\b/gi, '').trim();
+                return { ...c, text };
+              })
+            : last.content,
+        };
+        return [...currentMessages.slice(0, -1), newLast];
+      })();
+
+      // If stripping @goose results in an empty user message, don't hit the agent.
+      const lastForAgent = agentMessages[agentMessages.length - 1];
+      const lastTextForAgent =
+        Array.isArray(lastForAgent?.content)
+          ? lastForAgent.content
+              .filter((c) => c && c.type === 'text')
+              .map((c: any) => c.text || '')
+              .join('')
+              .trim()
+          : '';
+      if (!lastTextForAgent) {
+        log.messages('skipping-ai-empty-after-strip', currentMessages.length, {
+          note: 'message became empty after stripping @goose',
+        });
+        setChatState(ChatState.Idle);
+        return;
+      }
+
       log.state(ChatState.Streaming, { reason: 'user submit' });
       setChatState(ChatState.Streaming);
 
@@ -972,7 +1011,7 @@ export function useChatStream({
             ...config.headers,
           },
           body: JSON.stringify({
-            messages: currentMessages,
+            messages: agentMessages,
             session_id: currentSession.id, // Use the actual session ID from the backend
           }),
           signal: abortControllerRef.current.signal,
