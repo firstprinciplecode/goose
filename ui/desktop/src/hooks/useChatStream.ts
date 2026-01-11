@@ -900,6 +900,24 @@ export function useChatStream({
         return [...withUser.slice(0, -1), newLast];
       })();
 
+      // Debug: ensure we are sending full shared context (especially important for collab host triggers).
+      log.stream('reply-payload', {
+        agentContextProvided: Array.isArray(agentContextMessages) ? agentContextMessages.length : 0,
+        messagesRefCount: messagesRef.current.length,
+        agentMessagesCount: agentMessages.length,
+        lastTextForAgentPreview: (() => {
+          const last = agentMessages[agentMessages.length - 1];
+          const text =
+            Array.isArray(last?.content)
+              ? (last.content as any[])
+                  .filter((c) => c && c.type === 'text')
+                  .map((c) => c.text || '')
+                  .join('')
+              : '';
+          return text.slice(0, 120);
+        })(),
+      });
+
       // If stripping @goose results in an empty user message, don't hit the agent.
       const lastForAgent = agentMessages[agentMessages.length - 1];
       const lastTextForAgent =
