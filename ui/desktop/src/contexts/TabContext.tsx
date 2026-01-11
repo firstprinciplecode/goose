@@ -58,6 +58,42 @@ interface TabContextType {
 const TabContext = createContext<TabContextType | undefined>(undefined);
 
 const TAB_STATE_STORAGE_KEY = 'goose-tab-state';
+const MAX_RESTORED_TABS = 3;
+
+function trimRestoredTabStates(raw: any[], maxTabs: number): any[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+
+  // Filter obviously invalid entries
+  const onlyValid = raw.filter((ts) => ts?.tab?.id);
+  if (onlyValid.length <= maxTabs) return onlyValid;
+
+  // De-dupe by tab.id, keeping the last occurrence (closest to "most recent" in storage order)
+  const byId = new Map<string, any>();
+  for (const ts of onlyValid) {
+    byId.set(ts.tab.id, ts);
+  }
+  const deduped = Array.from(byId.values());
+
+  // Identify active tab (fallback to last)
+  const active = deduped.find((ts) => ts.tab?.isActive) ?? deduped[deduped.length - 1];
+  const activeId = active?.tab?.id;
+
+  // Keep the last N entries in storage order
+  let trimmed = deduped.slice(-maxTabs);
+
+  // Ensure the active tab is included
+  if (activeId && !trimmed.some((ts) => ts.tab?.id === activeId)) {
+    trimmed = [active, ...trimmed].slice(0, maxTabs);
+  }
+
+  // Normalize active flags (exactly one active)
+  trimmed = trimmed.map((ts) => ({
+    ...ts,
+    tab: { ...ts.tab, isActive: ts.tab?.id === activeId },
+  }));
+
+  return trimmed;
+}
 
 const createNewTab = (overrides: Partial<Tab> = {}): Tab => {
   // Generate a truly unique tab ID
@@ -108,8 +144,10 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          const limited = trimRestoredTabStates(parsed, MAX_RESTORED_TABS);
+
           // CRITICAL FIX: Ensure each restored tab gets a unique session ID
-          const sanitizedTabs = parsed.map((tabState: any) => {
+          const sanitizedTabs = limited.map((tabState: any) => {
             const tab = tabState.tab;
             
             // Generate a new unique session ID for each restored tab to prevent conflicts
@@ -436,8 +474,10 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          const limited = trimRestoredTabStates(parsed, MAX_RESTORED_TABS);
+
           // Apply the same sanitization logic as in initial load
-          const sanitizedTabs = parsed.map((tabState: any) => {
+          const sanitizedTabs = limited.map((tabState: any) => {
             const tab = tabState.tab;
             
             // Validate Matrix tab properties (HYBRID APPROACH)
