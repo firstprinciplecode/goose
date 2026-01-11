@@ -1340,6 +1340,7 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     handleTabClick,
     handleTabClose,
     handleNewTab,
+    createChatTab,
     handleChatUpdate,
     handleMessageSubmit,
     getActiveTabState,
