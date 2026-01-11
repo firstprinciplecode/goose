@@ -923,7 +923,7 @@ export function useChatStream({
                     ));
                 const text =
                   isVagueTrigger && previousText
-                    ? `${stripped}\n\nContext: ${previousText.slice(0, 240)}`
+                    ? `${stripped}\n\nQuestion to answer: ${previousText.slice(0, 240)}`
                     : stripped;
                 return { ...c, text: text.trim() };
               })
