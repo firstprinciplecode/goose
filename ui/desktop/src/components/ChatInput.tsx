@@ -1685,12 +1685,11 @@ export default function ChatInput({
             new CustomEvent('submit', { detail: { value: agentTextToSend } }) as unknown as React.FormEvent
           );
         } else if (isCollaborativeNow && !shouldTriggerAgent) {
-          // For collaborative guests who don't trigger the agent, we still need to add the message locally
-          // so they can see their own message in the chat without waiting for the Supabase roundtrip
-          console.log('[ChatInput] 📝 Collaborative guest message - adding to local messages');
-          handleSubmit(
-            new CustomEvent('submit', { detail: { value: textToSend } }) as unknown as React.FormEvent
-          );
+          // Collaborative guests should NOT run the local agent or touch the local session at all.
+          // Their message is written to Supabase (above) and rendered from Supabase as the single
+          // source of truth. Running useChatStream here can create/reset local sessions and make
+          // it look like the tab "reopened a clean new chat".
+          console.log('[ChatInput] 📝 Collaborative guest message - rendered from Supabase (no local submit)');
         }
 
         // Auto-resume queue after sending a NON-interruption message (if it was paused due to interruption)

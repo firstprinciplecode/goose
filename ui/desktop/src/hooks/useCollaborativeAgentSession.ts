@@ -509,10 +509,17 @@ export function useCollaborativeAgentSession(
 
       try {
         const isGooseTrigger = containsGooseMention(content);
-        await sendMessage(client, sessionId, authSession.user.id, content, {
+        const inserted = await sendMessage(client, sessionId, authSession.user.id, content, {
           messageType: isGooseTrigger ? 'goose_trigger' : 'user',
           localMessageId,
           userEmail: authSession.user.email,
+        });
+        // Optimistically merge the inserted message immediately (realtime may also deliver it).
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === inserted.id)) return prev;
+          const merged = [...prev, inserted];
+          merged.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          return merged;
         });
         console.log('[CollabSession] ✅ sendHumanMessage success:', content.slice(0, 50));
       } catch (e) {
