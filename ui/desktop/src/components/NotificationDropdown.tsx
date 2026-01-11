@@ -235,6 +235,14 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
           if (!result.success && result.error === 'FOLDER_MISMATCH') {
             console.warn('[NotificationDropdown] Folder mismatch when opening collaborative session');
           }
+          // Tell BaseChat2 to join the exact collab session id immediately.
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent('collab-session-joined', {
+                detail: { gooseSessionId: invite.goose_session_id, collabSessionId },
+              })
+            );
+          }, 50);
         }).catch((error) => {
           console.error('[NotificationDropdown] Failed to open session tab:', error);
         });

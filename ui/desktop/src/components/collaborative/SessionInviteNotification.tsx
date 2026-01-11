@@ -10,6 +10,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useSupabase } from '../../contexts/SupabaseContext';
+import { useTabContext } from '../../contexts/TabContext';
 import {
   SessionInvite,
   acceptInvite,
@@ -50,6 +51,7 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
   className = '',
 }) => {
   const navigate = useNavigate();
+  const { openExistingSession } = useTabContext();
   const { client, user, isEnabled } = useSupabase();
   const [pendingInvites, setPendingInvites] = useState<SessionInvite[]>([]);
   const [processingInvites, setProcessingInvites] = useState<Set<string>>(new Set());
@@ -95,17 +97,28 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
     setProcessingInvites((prev) => new Set(prev).add(invite.id));
 
     try {
-      const sessionId = await acceptInvite(client, invite.id);
-      console.log('[SessionInvite] Accepted invite, joining session:', sessionId);
+      const collabSessionId = await acceptInvite(client, invite.id);
+      console.log('[SessionInvite] Accepted invite, joining session:', collabSessionId);
 
       // Remove from pending
       setPendingInvites((prev) => prev.filter((p) => p.id !== invite.id));
 
-      // Navigate to the collaborative session
-      // The goose_session_id is the local session to open
       if (invite.goose_session_id) {
-        // Navigate to pair view with the session
-        navigate(`/pair?session=${invite.goose_session_id}&collab=${sessionId}`);
+        // Ensure we are on the chat route, then open/switch the tab.
+        navigate('/pair');
+        const gooseSessionId = invite.goose_session_id;
+        const sessionTitle = invite.session_title || `Collab: ${gooseSessionId.slice(0, 8)}`;
+
+        await openExistingSession(gooseSessionId, sessionTitle, true);
+
+        // Tell BaseChat2 to join the exact collab session id immediately.
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent('collab-session-joined', {
+              detail: { gooseSessionId, collabSessionId },
+            })
+          );
+        }, 50);
       }
     } catch (e) {
       console.error('[SessionInvite] Failed to accept invite:', e);
@@ -116,7 +129,7 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
         return next;
       });
     }
-  }, [client, processingInvites, navigate]);
+  }, [client, processingInvites, navigate, openExistingSession]);
 
   const handleDecline = useCallback(async (invite: SessionInvite) => {
     if (!client || processingInvites.has(invite.id)) return;

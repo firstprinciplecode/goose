@@ -168,74 +168,7 @@ export default function ChatInput({
 
     const refreshComposerBackdrop = () => {
       const el = composerRef.current;
-      if (!el) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInput.tsx:refreshComposerBackdrop',message:'composerRef missing',data:{window:{w:window.innerWidth,h:window.innerHeight}},timestamp:Date.now(),sessionId:'debug-session',runId:'blur-pre',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        return;
-      }
-
-      // #region agent log
-      // One-time-ish environment capability checks (helps diagnose "computed blur but no visual blur")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const __any = window as any;
-      const __reduceTransparency = typeof window.matchMedia === 'function'
-        ? window.matchMedia('(prefers-reduced-transparency: reduce)').matches
-        : null;
-      const __supportsBackdrop = typeof (window as any).CSS?.supports === 'function'
-        ? (window as any).CSS.supports('backdrop-filter', 'blur(2px)') || (window as any).CSS.supports('-webkit-backdrop-filter', 'blur(2px)')
-        : null;
-      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInput.tsx:env',message:'environment blur capabilities',data:{reduceTransparency:__reduceTransparency,supportsBackdrop:__supportsBackdrop,dpr:window.devicePixelRatio,ua:navigator.userAgent.slice(0,180),hasElectron:Boolean(__any?.electron)},timestamp:Date.now(),sessionId:'debug-session',runId:'blur-pre',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
-
-      const before = getComputedStyle(el, '::before') as any;
-      const self = getComputedStyle(el) as any;
-      const rect = el.getBoundingClientRect();
-      const cx = Math.round(rect.left + rect.width / 2);
-      const cy = Math.round(rect.top + rect.height / 2);
-
-      // Probe what is behind the composer by hiding it from hit-testing briefly.
-      // If this shows wallpaper/messages behind, then a missing blur is compositor-level.
-      const prevVis = el.style.visibility;
-      el.style.visibility = 'hidden';
-      const behindWithoutComposer = typeof document.elementsFromPoint === 'function'
-        ? document.elementsFromPoint(cx, cy).slice(0, 12).map((n) => {
-            const e = n as HTMLElement;
-            return {
-              tag: e.tagName,
-              id: (e as any).id || null,
-              class: typeof (e as any).className === 'string' ? (e as any).className : null,
-            };
-          })
-        : [];
-      el.style.visibility = prevVis;
-
-      const behindAll = typeof document.elementsFromPoint === 'function'
-        ? document.elementsFromPoint(cx, cy).slice(0, 15).map((n) => {
-            const e = n as HTMLElement;
-            return {
-              tag: e.tagName,
-              id: (e as any).id || null,
-              class: typeof (e as any).className === 'string' ? (e as any).className : null,
-            };
-          })
-        : [];
-      const behindSummary = {
-        count: behindAll.length,
-        hasBody: behindAll.some((e) => e.tag === 'BODY' || e.tag === 'HTML'),
-        hasScrollArea: behindAll.some((e) => (e.class || '').toLowerCase().includes('scroll')),
-        hasMessage: behindAll.some((e) => (e.class || '').toLowerCase().includes('message')),
-      };
-      const behindNoComposerSummary = {
-        count: behindWithoutComposer.length,
-        hasBody: behindWithoutComposer.some((e) => e.tag === 'BODY' || e.tag === 'HTML'),
-        hasScrollArea: behindWithoutComposer.some((e) => (e.class || '').toLowerCase().includes('scroll')),
-        hasMessage: behindWithoutComposer.some((e) => (e.class || '').toLowerCase().includes('message')),
-        hasBgCover: behindWithoutComposer.some((e) => (e.class || '').toLowerCase().includes('bg-cover')),
-      };
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInput.tsx:refreshComposerBackdrop',message:'composer blur pre-refresh',data:{self:{backdropFilter:self.backdropFilter,webkitBackdropFilter:self.webkitBackdropFilter,backgroundColor:self.backgroundColor,backgroundImage:self.backgroundImage,filter:self.filter,transform:self.transform},before:{content:before.content,backdropFilter:before.backdropFilter,webkitBackdropFilter:before.webkitBackdropFilter,opacity:before.opacity,backgroundColor:before.backgroundColor,backgroundImage:before.backgroundImage,filter:before.filter,transform:before.transform},el:{className:el.className,composerBlurVar:getComputedStyle(el).getPropertyValue('--composer-blur').trim() || null,rect:{x:Math.round(rect.x),y:Math.round(rect.y),w:Math.round(rect.width),h:Math.round(rect.height)}},probe:{x:cx,y:cy,behindSummary,behindNoComposerSummary}},timestamp:Date.now(),sessionId:'debug-session',runId:'blur-pre',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
+      if (!el) return;
 
       // Chromium/Electron can drop backdrop-filter compositing after resize.
       // Toggling a class for one frame forces a repaint and re-applies the blur.
@@ -245,11 +178,6 @@ export default function ChatInput({
       rafId = requestAnimationFrame(() => {
         el.classList.remove('backdrop-refresh');
         rafId = null;
-
-        const after = getComputedStyle(el, '::before') as any;
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInput.tsx:refreshComposerBackdrop',message:'composer backdrop post-refresh',data:{after:{backdropFilter:after.backdropFilter,webkitBackdropFilter:after.webkitBackdropFilter,opacity:after.opacity,backgroundColor:after.backgroundColor,filter:after.filter,transform:after.transform},el:{className:el.className,transform:getComputedStyle(el).transform,composerBlurVar:getComputedStyle(el).getPropertyValue('--composer-blur').trim() || null}},timestamp:Date.now(),sessionId:'debug-session',runId:'blur-pre',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
       });
     };
 
@@ -281,9 +209,6 @@ export default function ChatInput({
       resizeDebounceId = window.setTimeout(() => {
         refreshComposerBackdrop();
       }, 120);
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInput.tsx:handleResize',message:'ChatInput resize handler ran',data:{availableWidthAfter:chatInputRef.current?.offsetWidth ?? null,window:{w:window.innerWidth,h:window.innerHeight}},timestamp:Date.now(),sessionId:'debug-session',runId:'blur-pre',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
     };
 
     window.addEventListener('resize', handleResize);
