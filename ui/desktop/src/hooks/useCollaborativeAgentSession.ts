@@ -755,16 +755,25 @@ export function useCollaborativeAgentSession(
   // ==========================================================================
   useEffect(() => {
     // Only the host can toggle collaborative mode
-    if (!client || !collabSession || !isHost || !collaborativeMode) return;
+    if (!client || !collabSession || !isHost) return;
     
     // Check if there are any active guests (participants other than the host)
     const activeGuests = participants.filter(
       p => p.is_active && p.user_id !== authSession?.user?.id
     );
     
-    if (activeGuests.length === 0) {
+    // If guests are present, enforce mention-only mode (collaborativeMode = true).
+    if (activeGuests.length > 0 && !collaborativeMode) {
+      console.log('[CollabSession] 👥 Guests present - enabling collaborative mode (mention-only)');
+      setCollaborativeMode(client, collabSession.id, true).catch((e) => {
+        console.error('[CollabSession] ❌ Failed to enable collaborative mode:', e);
+      });
+      return;
+    }
+
+    // If no guests remain, return to solo mode (collaborativeMode = false).
+    if (activeGuests.length === 0 && collaborativeMode) {
       console.log('[CollabSession] 👋 All guests left - switching back to solo mode');
-      // Toggle off collaborative mode so Goose responds to all messages again
       setCollaborativeMode(client, collabSession.id, false).catch((e) => {
         console.error('[CollabSession] ❌ Failed to disable collaborative mode:', e);
       });

@@ -96,6 +96,20 @@ function BaseChatContent({
 
   const onStreamFinish = useCallback(() => {}, []);
 
+  // Collaborative session integration
+  const collab = useCollaborativeAgentSession(sessionId);
+
+  // If another human is present in the collaborative session, force mention-only behavior
+  // for *everyone* (host + guests). When the guest leaves, this becomes false and Goose
+  // returns to normal auto-response.
+  const gooseMentionOnly = useMemo(() => {
+    if (!collab.state.isCollaborative) return false;
+    const activeOthers = collab.state.participants.filter(
+      (p) => p.is_active && p.user_id !== collab.state.currentUserId
+    );
+    return activeOthers.length > 0;
+  }, [collab.state.isCollaborative, collab.state.participants, collab.state.currentUserId]);
+
   const {
     session,
     messages,
@@ -115,10 +129,8 @@ function BaseChatContent({
     tabId, // Pass tabId for sidecar filtering
     matrixRoomId, // Pass Matrix room ID for loading historical messages
     isCollaborativeJoin, // Joining a collaborative session - disable Goose auto-response
+    gooseMentionOnly,
   });
-
-  // Collaborative session integration
-  const collab = useCollaborativeAgentSession(sessionId);
   
   // Get tab context for accessing tab title
   const tabContext = useTabContext();

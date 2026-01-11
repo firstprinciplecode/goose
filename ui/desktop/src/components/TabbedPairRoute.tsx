@@ -6,6 +6,8 @@ import { ContextManagerProvider } from './context_management/ContextManager';
 import { useNavigation } from './Layout/AppLayout';
 import { useTabContext } from '../contexts/TabContext';
 import { unifiedSessionService } from '../services/UnifiedSessionService';
+import { useSupabase } from '../contexts/SupabaseContext';
+import { getSessionById, redeemInvite } from '../services/collaborativeSessionService';
 
 interface TabbedPairRouteProps {
   setIsGoosehintsModalOpen: (isOpen: boolean) => void;
@@ -20,6 +22,7 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
   const initialMessage = routeState?.initialMessage;
   const { isNavExpanded } = useNavigation();
   const { openExistingSession, openMatrixChat, handleNewTab, tabStates } = useTabContext();
+  const { client: supabaseClient, isEnabled: supabaseEnabled } = useSupabase();
 
   // Track if we've already handled the initial message to prevent duplicate handling
   const [hasHandledInitialMessage, setHasHandledInitialMessage] = React.useState(false);
@@ -63,6 +66,70 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
       window.history.replaceState({}, '', newUrl);
     }
   }, [searchParams, openExistingSession]);
+
+  // Handle collaborative invite deep-links:
+  // - `?session=<gooseSessionId>&collab=<collabSessionId>` (accept-invite flow)
+  // - `?collab=<inviteToken>` (invite link flow)
+  useEffect(() => {
+    const sessionId = searchParams.get('session');
+    const collabParam = searchParams.get('collab');
+
+    if (!sessionId && !collabParam) return;
+
+    const clearParams = () => {
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('session');
+      newSearchParams.delete('collab');
+      const newUrl = `${window.location.pathname}${newSearchParams.toString() ? '?' + newSearchParams.toString() : ''}`;
+      window.history.replaceState({}, '', newUrl);
+    };
+
+    // Case A: We already have a Goose session id. Open tab and join the collab session id.
+    if (sessionId) {
+      void openExistingSession(sessionId, undefined, !!collabParam).finally(() => {
+        if (collabParam) {
+          // Dispatch a join event after the tab mounts; BaseChat2 listens for this.
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent('collab-session-joined', {
+                detail: { gooseSessionId: sessionId, collabSessionId: collabParam },
+              })
+            );
+          }, 50);
+        }
+        clearParams();
+      });
+      return;
+    }
+
+    // Case B: Token-only link. Redeem token to collab session id, then open the linked Goose session.
+    if (collabParam && supabaseEnabled && supabaseClient) {
+      (async () => {
+        try {
+          const collabSessionId = await redeemInvite(supabaseClient, collabParam);
+          const collabSession = await getSessionById(supabaseClient, collabSessionId);
+          const gooseSessionId = collabSession?.goose_session_id;
+          if (!gooseSessionId) return;
+
+          await openExistingSession(gooseSessionId, collabSession.title, true);
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent('collab-session-joined', {
+                detail: { gooseSessionId, collabSessionId },
+              })
+            );
+          }, 50);
+        } catch (e) {
+          console.warn('[TabbedPairRoute] Failed to redeem/join collab link:', e);
+        } finally {
+          clearParams();
+        }
+      })();
+    } else {
+      // No Supabase configured; clear params to avoid loop.
+      clearParams();
+    }
+  }, [searchParams, openExistingSession, supabaseEnabled, supabaseClient]);
 
   // Handle Matrix tab creation from notifications
   useEffect(() => {
