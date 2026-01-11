@@ -51,7 +51,7 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
   className = '',
 }) => {
   const navigate = useNavigate();
-  const { openExistingSession } = useTabContext();
+  const { openExistingSession, createChatTab } = useTabContext();
   const { client, user, isEnabled } = useSupabase();
   const [pendingInvites, setPendingInvites] = useState<SessionInvite[]>([]);
   const [processingInvites, setProcessingInvites] = useState<Set<string>>(new Set());
@@ -109,13 +109,22 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
         const gooseSessionId = invite.goose_session_id;
         const sessionTitle = invite.session_title || `Collab: ${gooseSessionId.slice(0, 8)}`;
 
-        await openExistingSession(gooseSessionId, sessionTitle, true);
+        const openResult = await openExistingSession(gooseSessionId, sessionTitle, true);
+
+        // Cross-machine invites: inviter's local backend session id may not exist here.
+        let gooseSessionIdToJoin = gooseSessionId;
+        if (!openResult.success) {
+          const created = await createChatTab({ title: sessionTitle });
+          if (created) {
+            gooseSessionIdToJoin = created.sessionId;
+          }
+        }
 
         // Tell BaseChat2 to join the exact collab session id immediately.
         setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent('collab-session-joined', {
-              detail: { gooseSessionId, collabSessionId },
+              detail: { gooseSessionId: gooseSessionIdToJoin, collabSessionId },
             })
           );
         }, 50);
@@ -129,7 +138,7 @@ export const SessionInviteNotification: React.FC<SessionInviteNotificationProps>
         return next;
       });
     }
-  }, [client, processingInvites, navigate, openExistingSession]);
+  }, [client, processingInvites, navigate, openExistingSession, createChatTab]);
 
   const handleDecline = useCallback(async (invite: SessionInvite) => {
     if (!client || processingInvites.has(invite.id)) return;

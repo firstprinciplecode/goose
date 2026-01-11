@@ -26,6 +26,7 @@ interface TabContextType {
   handleTabClick: (tabId: string) => void;
   handleTabClose: (tabId: string) => void;
   handleNewTab: () => void;
+  createChatTab: (overrides?: { title?: string }) => Promise<{ tabId: string; sessionId: string } | null>;
   handleChatUpdate: (tabId: string, chat: ChatType) => void;
   handleMessageSubmit: (message: string, tabId: string) => void;
   getActiveTabState: () => TabState | undefined;
@@ -286,6 +287,35 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
   const handleTabClick = useCallback((tabId: string) => {
     setActiveTabId(tabId);
   }, [activeTabId]);
+
+  const createChatTab = useCallback(async (overrides?: { title?: string }): Promise<{ tabId: string; sessionId: string } | null> => {
+    try {
+      const response = await startAgent({
+        body: {
+          working_dir: window.appConfig.get('GOOSE_WORKING_DIR') as string,
+        }
+      });
+
+      if (!response.data?.id) {
+        throw new Error('Failed to create backend session - no session ID returned');
+      }
+
+      const sessionId = response.data.id;
+      const newTab = createNewTab({ sessionId, title: overrides?.title ?? 'New Chat' });
+      const newTabState: TabState = {
+        tab: newTab,
+        chat: createNewChat(sessionId),
+        loadingChat: false
+      };
+
+      setTabStates(prev => [...prev, newTabState]);
+      setActiveTabId(newTab.id);
+      return { tabId: newTab.id, sessionId };
+    } catch (error) {
+      console.error('❌ Failed to create chat tab:', error);
+      return null;
+    }
+  }, []);
 
   const handleNewTab = useCallback(async () => {
     try {
@@ -652,7 +682,7 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
   }, [tabStates]);
 
   // Helper function to check if folder matches and fetch session if needed
-  const checkFolderMatch = useCallback(async (sessionId: string, providedSession?: Session): Promise<{ match: boolean; session: Session | null; error?: string }> => {
+  const checkFolderMatch = useCallback(async (sessionId: string, providedSession?: Session): Promise<{ match: boolean; session: Session | null; error?: 'SESSION_NOT_FOUND' }> => {
     // Skip folder check for Matrix sessions (they have special working_dir like "Direct Message")
     if (matrixSessionService.isMatrixSession(sessionId) || sessionId.startsWith('!')) {
       console.log('📂 Skipping folder check for Matrix session:', sessionId);
@@ -670,7 +700,7 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     if (!sessionToCheck) {
       sessionToCheck = await unifiedSessionService.getSessionById(sessionId);
       if (!sessionToCheck) {
-        return { match: false, session: null, error: 'Session not found' };
+        return { match: false, session: null, error: 'SESSION_NOT_FOUND' };
       }
     }
 
@@ -715,6 +745,9 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     // Check folder match
     const folderCheck = await checkFolderMatch(sessionId, providedSession);
     if (!folderCheck.match) {
+      if (folderCheck.error === 'SESSION_NOT_FOUND') {
+        return { success: false, error: 'SESSION_NOT_FOUND' };
+      }
       console.log('📂 Folder mismatch detected:', {
         sessionId,
         sessionFolder: folderCheck.session?.working_dir,

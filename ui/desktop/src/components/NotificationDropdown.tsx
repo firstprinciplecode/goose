@@ -9,6 +9,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useTabContext } from '../contexts/TabContext';
+import { useNavigate } from 'react-router-dom';
 import {
   SessionInvite,
   acceptInvite,
@@ -51,7 +52,8 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   className = '',
 }) => {
   const { client, user, isEnabled } = useSupabase();
-  const { openExistingSession } = useTabContext();
+  const { openExistingSession, createChatTab } = useTabContext();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<SessionInvite[]>([]);
   const [processingInvites, setProcessingInvites] = useState<Set<string>>(new Set());
@@ -231,21 +233,25 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
       if (invite.goose_session_id) {
         const sessionTitle = invite.session_title || `Collab: ${invite.goose_session_id.slice(0, 8)}`;
         console.log('[NotificationDropdown] 📂 Opening session tab:', invite.goose_session_id, 'title:', sessionTitle, 'isCollaborativeJoin: true');
-        openExistingSession(invite.goose_session_id, sessionTitle, true).then((result) => {
-          if (!result.success && result.error === 'FOLDER_MISMATCH') {
-            console.warn('[NotificationDropdown] Folder mismatch when opening collaborative session');
+        navigate('/pair');
+        const openResult = await openExistingSession(invite.goose_session_id, sessionTitle, true);
+
+        // Cross-machine invites: inviter's local backend session id may not exist here.
+        let gooseSessionIdToJoin = invite.goose_session_id;
+        if (!openResult.success) {
+          const created = await createChatTab({ title: sessionTitle });
+          if (created) {
+            gooseSessionIdToJoin = created.sessionId;
           }
-          // Tell BaseChat2 to join the exact collab session id immediately.
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent('collab-session-joined', {
-                detail: { gooseSessionId: invite.goose_session_id, collabSessionId },
-              })
-            );
-          }, 50);
-        }).catch((error) => {
-          console.error('[NotificationDropdown] Failed to open session tab:', error);
-        });
+        }
+
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent('collab-session-joined', {
+              detail: { gooseSessionId: gooseSessionIdToJoin, collabSessionId },
+            })
+          );
+        }, 50);
       } else {
         console.warn('[NotificationDropdown] No goose_session_id in invite, cannot open tab');
         // Still mark as accepted - the invite was processed
@@ -262,7 +268,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         return next;
       });
     }
-  }, [client, processingInvites, openExistingSession]);
+  }, [client, processingInvites, openExistingSession, createChatTab, navigate]);
 
   const handleDecline = useCallback(async (invite: SessionInvite) => {
     if (!client || processingInvites.has(invite.id)) return;

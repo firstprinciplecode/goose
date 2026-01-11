@@ -21,7 +21,7 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
   const routeState = location.state as ViewOptions | undefined;
   const initialMessage = routeState?.initialMessage;
   const { isNavExpanded } = useNavigation();
-  const { openExistingSession, openMatrixChat, handleNewTab, tabStates } = useTabContext();
+  const { openExistingSession, openMatrixChat, handleNewTab, createChatTab, tabStates } = useTabContext();
   const { client: supabaseClient, isEnabled: supabaseEnabled } = useSupabase();
 
   // Track if we've already handled the initial message to prevent duplicate handling
@@ -86,19 +86,28 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
 
     // Case A: We already have a Goose session id. Open tab and join the collab session id.
     if (sessionId) {
-      void openExistingSession(sessionId, undefined, !!collabParam).finally(() => {
-        if (collabParam) {
-          // Dispatch a join event after the tab mounts; BaseChat2 listens for this.
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent('collab-session-joined', {
-                detail: { gooseSessionId: sessionId, collabSessionId: collabParam },
-              })
-            );
-          }, 50);
+      (async () => {
+        try {
+          const openResult = await openExistingSession(sessionId, undefined, !!collabParam)
+          let gooseSessionIdToJoin = sessionId;
+          if (!openResult.success) {
+            const created = await createChatTab({ title: 'Collaborative session' });
+            if (created) gooseSessionIdToJoin = created.sessionId;
+          }
+
+          if (collabParam) {
+            setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent('collab-session-joined', {
+                  detail: { gooseSessionId: gooseSessionIdToJoin, collabSessionId: collabParam },
+                })
+              );
+            }, 50);
+          }
+        } finally {
+          clearParams();
         }
-        clearParams();
-      });
+      })();
       return;
     }
 
@@ -129,7 +138,7 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
       // No Supabase configured; clear params to avoid loop.
       clearParams();
     }
-  }, [searchParams, openExistingSession, supabaseEnabled, supabaseClient]);
+  }, [searchParams, openExistingSession, createChatTab, supabaseEnabled, supabaseClient]);
 
   // Handle Matrix tab creation from notifications
   useEffect(() => {
