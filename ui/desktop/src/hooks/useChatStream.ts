@@ -926,14 +926,17 @@ export function useChatStream({
                 const stripped = (c.text || '').replace(/@goose\b/gi, '').trim();
                 // If the @goose message is vague ("do you know?", "answer that"), append a short
                 // hint with the immediately preceding question so the agent doesn't lose context.
-                const isVagueTrigger =
-                  stripped.length <= 40 &&
-                  (/\b(that|this|it)\b/i.test(stripped) ||
-                    /^(hmm\s*)?(do you know|thoughts|any ideas|can you help|what do you say)\b/i.test(
-                      stripped
-                    ));
+                // Heuristic: when the @goose message is a *meta-request* ("help answer this question")
+                // rather than the actual question itself, attach the last question-like message from
+                // the shared history so the agent answers the right thing.
+                const isMetaRequest =
+                  /\b(help|answer|explain|clarify)\b/i.test(stripped) &&
+                  (/\b(question|this|that|it)\b/i.test(stripped) || !/\?/.test(stripped));
+                const hasConcreteTopic =
+                  /\b(stands for|meaning of|define|definition|llm)\b/i.test(stripped) || /\?/.test(stripped);
+                const shouldAttachQuestion = isMetaRequest && !hasConcreteTopic;
                 const text =
-                  isVagueTrigger && previousQuestion
+                  shouldAttachQuestion && previousQuestion
                     ? `${stripped}\n\nQuestion to answer: ${previousQuestion.slice(0, 240)}`
                     : stripped;
                 return { ...c, text: text.trim() };
