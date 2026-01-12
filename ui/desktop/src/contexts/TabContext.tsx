@@ -147,6 +147,10 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
         if (Array.isArray(parsed) && parsed.length > 0) {
           const limited = trimRestoredTabStates(parsed, MAX_RESTORED_TABS);
 
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'tab-pre',hypothesisId:'H1',location:'TabContext.tsx:restore',message:'restore-from-localStorage',data:{savedCount:Array.isArray(parsed)?parsed.length:null,limitedCount:limited.length,ids:limited.map((t:any)=>String(t?.tab?.id||'').slice(0,18)),sessionIds:limited.map((t:any)=>String(t?.tab?.sessionId||'').slice(0,18)),actives:limited.map((t:any)=>!!t?.tab?.isActive)},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion agent log
+
           // CRITICAL FIX: Ensure each restored tab gets a unique session ID
           const sanitizedTabs = limited.map((tabState: any) => {
             const tab = tabState.tab;
@@ -229,6 +233,10 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
             matrixRoomId: ts.tab.matrixRoomId,
             title: ts.tab.title
           })));
+
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'tab-pre',hypothesisId:'H1',location:'TabContext.tsx:restore',message:'restore-sanitized',data:{sanitizedCount:sanitizedTabs.length,sanitizedSessionIds:sanitizedTabs.map((t:any)=>String(t?.tab?.sessionId||'').slice(0,24)),titles:sanitizedTabs.map((t:any)=>String(t?.tab?.title||'').slice(0,40)),actives:sanitizedTabs.map((t:any)=>!!t?.tab?.isActive)},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion agent log
           
           return sanitizedTabs;
         }

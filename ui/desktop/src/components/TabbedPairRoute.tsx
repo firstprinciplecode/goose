@@ -170,6 +170,9 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
 
     // Skip if there's an active conversation (user is mid-chat)
     const hasActiveConversation = tabStates.some(ts => ts.chat.messages.length > 0);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'tab-pre',hypothesisId:'H2',location:'TabbedPairRoute.tsx:autoOpen',message:'auto-open-check',data:{hasAutoOpened:!!hasAutoOpenedRef.current,tabCount:tabStates.length,hasActiveConversation,tabSessionIds:tabStates.map((t:any)=>String(t?.tab?.sessionId||'').slice(0,24)),tabMsgCounts:tabStates.map((t:any)=>Number(t?.chat?.messages?.length||0))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
     if (hasActiveConversation) {
       console.log('📂 Skipping auto-open - user has active conversation');
       return;
@@ -186,6 +189,9 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
 
         // Get latest sessions for this folder
         const latestSessions = await unifiedSessionService.getLatestSessionsForFolder(currentFolder, 4);
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'tab-pre',hypothesisId:'H2',location:'TabbedPairRoute.tsx:autoOpen',message:'auto-open-latest-sessions',data:{currentFolderPresent:!!currentFolder,latestCount:latestSessions?.length||0,latestIds:(latestSessions||[]).map((s:any)=>String(s?.id||'').slice(0,16))},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
         
         // Filter out sessions that are already open in tabs
         const openSessionIds = new Set(tabStates.map(ts => ts.tab.sessionId));
