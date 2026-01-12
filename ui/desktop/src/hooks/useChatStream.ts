@@ -894,30 +894,34 @@ export function useChatStream({
         const last = withUser[withUser.length - 1];
         if (!last) return withUser;
 
-        const strippedUserText = (() => {
+        const extractText = (m: Message): string => {
           const text =
-            Array.isArray((last as any).content)
-              ? ((last as any).content as any[])
+            Array.isArray((m as any).content)
+              ? ((m as any).content as any[])
                   .filter((c) => c && c.type === 'text')
                   .map((c) => c.text || '')
                   .join('')
               : '';
-          return text.replace(/@goose\b/gi, '').trim();
+          return String(text || '').trim();
+        };
+
+        const strippedTriggerText = extractText(last).replace(/@goose\b/gi, '').trim();
+
+        // Deterministic: when @goose is used in collaborative (mention-only) mode,
+        // always answer the most recent question in the shared conversation history.
+        const selectedQuestion = (() => {
+          for (let i = withUser.length - 2; i >= 0; i--) {
+            const m = withUser[i];
+            if (!m || (m as any).role !== 'user') continue;
+            const txt = extractText(m);
+            if (!txt) continue;
+            if (/@goose\b/i.test(txt)) continue;
+            if (txt.includes('?')) return txt;
+          }
+          return '';
         })();
 
-        // In mention-only (collaboration), don't rely on the model "inferring" what to answer.
-        // We always send the full shared history (bounded above) and explicitly instruct it to
-        // answer the most recent question in the conversation.
-        const shouldForceAnswerInstruction = gooseMentionOnly || /@goose\b/i.test(userMessage);
-        const finalUserText = shouldForceAnswerInstruction
-          ? [
-              'You are Goose in a collaborative chat.',
-              'Using the conversation above as context, answer the most recent question asked by any participant.',
-              'If there is no clear question, ask a single clarifying question.',
-              '',
-              strippedUserText ? `User message: ${strippedUserText}` : 'User message: (no additional text)',
-            ].join('\n')
-          : strippedUserText;
+        const finalUserText = selectedQuestion || strippedTriggerText;
 
         const newLast: Message = {
           ...last,
