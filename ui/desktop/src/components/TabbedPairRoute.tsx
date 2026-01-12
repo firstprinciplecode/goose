@@ -168,6 +168,39 @@ export const TabbedPairRoute: React.FC<TabbedPairRouteProps> = ({
       return;
     }
 
+    // Robustness: if we have saved tab state or already have real (non-temp) sessions,
+    // we should NOT auto-open more sessions. Auto-open is only for "fresh start" cases.
+    try {
+      const saved = localStorage.getItem('goose-tab-state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'tab-pre',hypothesisId:'H2',location:'TabbedPairRoute.tsx:autoOpen',message:'auto-open-skip-saved-tab-state',data:{savedCount:parsed.length},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion agent log
+          hasAutoOpenedRef.current = true;
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    const hasRealSessionsOpen = tabStates.some(
+      (ts) =>
+        typeof ts?.tab?.sessionId === 'string' &&
+        ts.tab.sessionId &&
+        !ts.tab.sessionId.startsWith('temp_') &&
+        !ts.tab.sessionId.startsWith('new_')
+    );
+    if (hasRealSessionsOpen) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'tab-pre',hypothesisId:'H2',location:'TabbedPairRoute.tsx:autoOpen',message:'auto-open-skip-real-sessions-open',data:{tabCount:tabStates.length,tabSessionIds:tabStates.map((t:any)=>String(t?.tab?.sessionId||'').slice(0,24))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
+      hasAutoOpenedRef.current = true;
+      return;
+    }
+
     // Skip if there's an active conversation (user is mid-chat)
     const hasActiveConversation = tabStates.some(ts => ts.chat.messages.length > 0);
     // #region agent log

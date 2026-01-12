@@ -151,12 +151,10 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
           fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'tab-pre',hypothesisId:'H1',location:'TabContext.tsx:restore',message:'restore-from-localStorage',data:{savedCount:Array.isArray(parsed)?parsed.length:null,limitedCount:limited.length,ids:limited.map((t:any)=>String(t?.tab?.id||'').slice(0,18)),sessionIds:limited.map((t:any)=>String(t?.tab?.sessionId||'').slice(0,18)),actives:limited.map((t:any)=>!!t?.tab?.isActive)},timestamp:Date.now()})}).catch(()=>{});
           // #endregion agent log
 
-          // CRITICAL FIX: Ensure each restored tab gets a unique session ID
+          // Restore tabs as-is (bounded + validated). We should NOT rewrite backend session IDs here,
+          // otherwise history resume becomes flaky and auto-open heuristics misfire.
           const sanitizedTabs = limited.map((tabState: any) => {
             const tab = tabState.tab;
-            
-            // Generate a new unique session ID for each restored tab to prevent conflicts
-            const uniqueSessionId = `temp_restored_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             
             // Validate Matrix tab properties (HYBRID APPROACH)
             if (tab.type === 'matrix') {
@@ -170,24 +168,23 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
                     type: 'chat',
                     matrixRoomId: undefined,
                     matrixRecipientId: undefined,
-                    sessionId: uniqueSessionId, // Assign unique session ID
+                    // Keep sessionId as-is; if it's invalid, backend resume will fail gracefully.
                   },
                   chat: {
                     ...tabState.chat,
-                    sessionId: uniqueSessionId,
+                    sessionId: tab.sessionId,
                   }
                 };
               } else {
-                // Valid Matrix tab - give it a unique session ID
+                // Valid Matrix tab - keep its session id
                 return {
                   ...tabState,
                   tab: {
                     ...tab,
-                    sessionId: uniqueSessionId, // Assign unique session ID
                   },
                   chat: {
                     ...tabState.chat,
-                    sessionId: uniqueSessionId,
+                    sessionId: tab.sessionId,
                   }
                 };
               }
@@ -202,26 +199,16 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
                     type: 'chat',
                     matrixRoomId: undefined,
                     matrixRecipientId: undefined,
-                    sessionId: uniqueSessionId, // Assign unique session ID
+                    // Keep sessionId as-is
                   },
                   chat: {
                     ...tabState.chat,
-                    sessionId: uniqueSessionId,
+                    sessionId: tab.sessionId,
                   }
                 };
               } else {
-                // Valid regular tab - give it a unique session ID
-                return {
-                  ...tabState,
-                  tab: {
-                    ...tab,
-                    sessionId: uniqueSessionId, // Assign unique session ID
-                  },
-                  chat: {
-                    ...tabState.chat,
-                    sessionId: uniqueSessionId,
-                  }
-                };
+                // Valid regular tab - keep as-is
+                return tabState;
               }
             }
           });
