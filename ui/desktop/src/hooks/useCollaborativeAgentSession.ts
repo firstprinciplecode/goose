@@ -174,6 +174,9 @@ export function useCollaborativeAgentSession(
 
       // Subscribe to messages
       messageSubRef.current = subscribeToMessages(client, sessionId, (msg) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'C',location:'useCollaborativeAgentSession.ts:subscribeToMessages',message:'realtime-message-received',data:{collabSessionId:String(sessionId).slice(0,12),msgId:String((msg as any)?.id||'').slice(0,12),msgType:(msg as any)?.message_type||null,createdAt:(msg as any)?.created_at||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
         setMessages((prev) => {
           // Deduplicate
           if (prev.some((m) => m.id === msg.id)) {
@@ -222,6 +225,9 @@ export function useCollaborativeAgentSession(
             console.log('[CollabSession] 📢 Skipping join message for self');
             return;
           }
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'E',location:'useCollaborativeAgentSession.ts:participantJoin',message:'participant-join',data:{collabSessionId:String(sessionId).slice(0,12),userId:String(participant.user_id).slice(0,8),isActive:true},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion agent log
 
           // Add system message for join (only for OTHER users)
           const joinMessage: SessionHumanMessage = {
@@ -266,6 +272,9 @@ export function useCollaborativeAgentSession(
               p.user_id === participant.user_id ? { ...p, is_active: false } : p
             )
           );
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'E',location:'useCollaborativeAgentSession.ts:participantLeave',message:'participant-leave',data:{collabSessionId:String(sessionId).slice(0,12),userId:String(participant.user_id).slice(0,8),isActive:false},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion agent log
 
           // Add system message for leave
           const leaveMessage: SessionHumanMessage = {
@@ -444,6 +453,9 @@ export function useCollaborativeAgentSession(
     if (!client || !collabSession || !authSession?.user?.id) return;
 
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'E',location:'useCollaborativeAgentSession.ts:leave',message:'leave-called',data:{collabSessionId:String(collabSession.id).slice(0,12),userId:String(authSession.user.id).slice(0,8),isHost:!!isHost},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
       await leaveSession(client, collabSession.id, authSession.user.id);
       cleanupSubscriptions();
       setCollabSession(null);

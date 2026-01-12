@@ -737,6 +737,14 @@ export function useChatStream({
 
   const handleSubmit = useCallback(
     async (userMessage: string) => {
+      // Collaborative join tabs (guests) must never create/run a local agent session.
+      // Their messages are written to Supabase and rendered from Supabase as the source of truth.
+      if (isCollaborativeJoin) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'F',location:'useChatStream.ts:handleSubmit',message:'collab-join-submit-ignored',data:{gooseSessionId:String(sessionId).slice(0,12),msgLen:userMessage.length,hasGoose:/@goose\\b/i.test(userMessage)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+        return;
+      }
       log.messages('user-submit', messagesRef.current.length + 1, {
         userMessageLength: userMessage.length,
       });

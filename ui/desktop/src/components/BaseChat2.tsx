@@ -204,6 +204,20 @@ function BaseChatContent({
 
     return () => window.removeEventListener('collab-session-joined', onJoined as EventListener);
   }, [sessionId, collab.actions, collab.state.session?.id]);
+
+  // Guest leave handling:
+  // Closing the tab/app should mark the guest inactive so the host can un-mute Goose.
+  // We only do this for non-host participants.
+  useEffect(() => {
+    return () => {
+      if (!collab.state.isCollaborative) return;
+      if (collab.state.isHost) return;
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'E',location:'BaseChat2.tsx:unmount',message:'guest-unmount-calling-leave',data:{gooseSessionId:String(sessionId).slice(0,12),collabSessionId:collab.state.session?.id?String(collab.state.session?.id).slice(0,12):null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
+      void collab.actions.leave();
+    };
+  }, [sessionId, collab.state.isCollaborative, collab.state.isHost, collab.state.session?.id, collab.actions]);
   
   // Debug: log collab state on every render
   console.log('🔷 BaseChat2 RENDER - collab state:', {
@@ -342,6 +356,16 @@ function BaseChatContent({
     if (!collab.state.isCollaborative || collab.state.messages.length === 0) {
       return;
     }
+
+    // IMPORTANT: This "sync via /reply" has proven to be destabilizing (can cause repeated agent runs / flicker).
+    // We already provide full shared context to the host agent via `agentContextMessages`, so disable this path.
+    // Keep debug instrumentation in place for verification; this early-return prevents the side-effect.
+    if (true) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'D',location:'BaseChat2.tsx:syncEffect',message:'sync-collab-to-backend-disabled',data:{gooseSessionId:String(sessionId).slice(0,12),collabSessionId:collab.state.session?.id?String(collab.state.session?.id).slice(0,12):null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
+      return;
+    }
     
     // Find messages that haven't been synced yet
     const unsyncedMessages = collab.state.messages.filter(
@@ -356,6 +380,9 @@ function BaseChatContent({
       unsyncedCount: unsyncedMessages.length,
       sessionId,
     });
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'D',location:'BaseChat2.tsx:syncEffect',message:'sync-collab-to-backend-start',data:{gooseSessionId:String(sessionId).slice(0,12),collabSessionId:collab.state.session?.id?String(collab.state.session?.id).slice(0,12):null,unsyncedCount:unsyncedMessages.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
     
     // Sync messages to the Goose backend
     const syncToBackend = async () => {
@@ -381,6 +408,9 @@ function BaseChatContent({
           },
           throwOnError: false,
         });
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'D',location:'BaseChat2.tsx:syncEffect',message:'sync-collab-to-backend-done',data:{gooseSessionId:String(sessionId).slice(0,12),syncedCount:unsyncedMessages.length},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
         
         // Mark these messages as synced
         unsyncedMessages.forEach(msg => {
