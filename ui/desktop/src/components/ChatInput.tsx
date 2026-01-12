@@ -88,6 +88,8 @@ interface ModelLimit {
 interface ChatInputProps {
   sessionId: string | null;
   tabId?: string;
+  // Joining a collaborative session as a guest: block any local agent/session creation until collab attaches.
+  isCollaborativeJoin?: boolean;
   handleSubmit: (e: React.FormEvent) => void;
   chatState: ChatState;
   onStop?: () => void;
@@ -129,6 +131,7 @@ interface ChatInputProps {
 export default function ChatInput({
   sessionId,
   tabId,
+  isCollaborativeJoin = false,
   handleSubmit,
   chatState = ChatState.Idle,
   onStop,
@@ -1669,7 +1672,7 @@ export default function ChatInput({
         // Only the host runs the agent locally. In collaborative mode, the agent
         // responds only when explicitly mentioned with @goose.
         const shouldTriggerAgent = !collab.state.isCollaborative
-          ? true
+          ? !isCollaborativeJoin // Guests joining should not run local agent during hydration/races.
           : collab.state.isHost &&
             (!collab.state.collaborativeMode || collab.actions.shouldTriggerAgent(textToSend));
 

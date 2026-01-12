@@ -107,11 +107,21 @@ function BaseChatContent({
     // start in mention-only to avoid a brief "Goose ON" window before participants hydrate.
     if (isCollaborativeJoin) return true;
     if (!collab.state.isCollaborative) return false;
+    // Prefer the server-synced collaborative mode flag (set by host when guests are present).
+    // This avoids participant hydration races on guests that can briefly re-enable Goose.
+    if (collab.state.collaborativeMode) return true;
+    // Fallback: if participants indicate another active user, stay in mention-only.
     const activeOthers = collab.state.participants.filter(
       (p) => p.is_active && p.user_id !== collab.state.currentUserId
     );
     return activeOthers.length > 0;
-  }, [isCollaborativeJoin, collab.state.isCollaborative, collab.state.participants, collab.state.currentUserId]);
+  }, [
+    isCollaborativeJoin,
+    collab.state.isCollaborative,
+    collab.state.collaborativeMode,
+    collab.state.participants,
+    collab.state.currentUserId,
+  ]);
 
   // For the host agent: provide full collaborative context to useChatStream so @goose answers
   // have the correct shared conversation history. Keep this conversion simple and stable:
@@ -907,6 +917,7 @@ function BaseChatContent({
           <ChatInput
             sessionId={sessionId}
             tabId={tabId}
+            isCollaborativeJoin={isCollaborativeJoin}
             handleSubmit={handleFormSubmit}
             chatState={chatState}
             onStop={stopStreaming}
