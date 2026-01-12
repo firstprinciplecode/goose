@@ -612,6 +612,16 @@ export default function ChatInput({
 
   // Track which assistant messages we've already published to Supabase
   const publishedAssistantIdsRef = useRef<Set<string>>(new Set());
+  // Track assistant publishes even when the assistant message has no id (some streaming messages)
+  // so we don't publish the same assistant response repeatedly.
+  const publishedAssistantKeysRef = useRef<Set<string>>(new Set());
+
+  const stableTextKey = (s: string) => {
+    // tiny stable hash (djb2) - good enough for dedupe keys, not security-sensitive
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+    return (h >>> 0).toString(36);
+  };
 
   // Track which users we've already invited in this session (to prevent duplicate invites)
   const invitedUsersRef = useRef<Set<string>>(new Set());
@@ -624,6 +634,9 @@ export default function ChatInput({
     if (!messages || !Array.isArray(messages) || messages.length === 0) return;
 
     const lastMessage = messages[messages.length - 1];
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'A',location:'ChatInput.tsx:publishEffect',message:'publish-effect-check',data:{hasMessages:messages.length>0,lastRole:lastMessage?.role,chatState,collabIsCollab:!!collab.state.isCollaborative,collabIsHost:!!collab.state.isHost,lastId:lastMessage?.id?String(lastMessage.id).slice(0,12):null,alreadyPublished:!!(lastMessage?.id&&publishedAssistantIdsRef.current.has(lastMessage.id))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
     
     if (lastMessage && 
         lastMessage.role === 'assistant' && 
@@ -657,14 +670,30 @@ export default function ChatInput({
       
       if (!textContent.trim()) return;
 
+      // Additional dedupe for cases where the assistant message has no id.
+      // Include the collab session id so identical text in different sessions doesn't collide.
+      const collabSessionKey = collab.state.session?.id ? String(collab.state.session.id) : 'no-collab-session';
+      const fallbackPublishKey = `aid:none:${collabSessionKey}:${stableTextKey(textContent)}:${textContent.length}`;
+      if (!lastMessage.id && publishedAssistantKeysRef.current.has(fallbackPublishKey)) {
+        return;
+      }
+
       // Mark as published BEFORE sending to prevent races; remove on failure.
       if (lastMessage.id) {
         publishedAssistantIdsRef.current.add(lastMessage.id);
+      } else {
+        publishedAssistantKeysRef.current.add(fallbackPublishKey);
       }
+
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'A',location:'ChatInput.tsx:publishEffect',message:'publishing-assistant-to-supabase',data:{lastId:lastMessage?.id?String(lastMessage.id).slice(0,12):null,textLen:textContent.length,collabSessionId:collab.state.session?.id?String(collab.state.session.id).slice(0,12):null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
 
       collab.actions.sendAssistantMessage(textContent, lastMessage.id).catch((e) => {
         if (lastMessage.id) {
           publishedAssistantIdsRef.current.delete(lastMessage.id);
+        } else {
+          publishedAssistantKeysRef.current.delete(fallbackPublishKey);
         }
         console.error('[CollabSession] Failed to publish assistant message:', e);
       });
@@ -689,6 +718,10 @@ export default function ChatInput({
       // if @goose is not present.
       const content = msg.content?.trim();
       if (!content) continue;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'B',location:'ChatInput.tsx:hostGooseTrigger',message:'host-processing-goose-trigger',data:{msgId:String(msg.id).slice(0,12),fromUser:String(msg.user_id).slice(0,8),hostId:String(hostId).slice(0,8),contentHasGoose:/@goose\\b/i.test(content),contentLen:content.length,collabSessionId:collab.state.session?.id?String(collab.state.session.id).slice(0,12):null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
 
       handleSubmit(
         new CustomEvent('submit', { detail: { value: content } }) as unknown as React.FormEvent
