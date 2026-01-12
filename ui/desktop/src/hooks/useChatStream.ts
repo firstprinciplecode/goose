@@ -887,8 +887,18 @@ export function useChatStream({
         if (!shouldStrip) return withUser;
         const last = withUser[withUser.length - 1];
         if (!last) return withUser;
-        const previousText = (() => {
-          // Find the most recent non-@goose user message to use as an anchor if the trigger is vague.
+        const previousQuestion = (() => {
+          // Find the most recent "question-like" user message (from anyone), excluding @goose triggers.
+          // This is critical when the @goose trigger is vague ("can you help?", "answer that?").
+          const isQuestionLike = (txt: string) => {
+            const t = txt.trim();
+            if (t.length < 8) return false;
+            if (/@goose\b/i.test(t)) return false;
+            if (t.includes('?')) return true;
+            return /^(what|why|how|does|do|did|is|are|can|could|should|would|where|when|which)\b/i.test(t);
+          };
+
+          let best = '';
           for (let i = withUser.length - 2; i >= 0; i--) {
             const m = withUser[i];
             if (!m || (m as any).role !== 'user') continue;
@@ -901,10 +911,11 @@ export function useChatStream({
                     .trim()
                 : '';
             if (!txt) continue;
-            if (/@goose\b/i.test(txt)) continue;
-            return txt;
+            if (isQuestionLike(txt)) return txt;
+            // keep a fallback that's at least non-empty and not a goose trigger
+            if (!best && !/@goose\b/i.test(txt)) best = txt;
           }
-          return '';
+          return best;
         })();
 
         const newLast: Message = {
@@ -922,8 +933,8 @@ export function useChatStream({
                       stripped
                     ));
                 const text =
-                  isVagueTrigger && previousText
-                    ? `${stripped}\n\nQuestion to answer: ${previousText.slice(0, 240)}`
+                  isVagueTrigger && previousQuestion
+                    ? `${stripped}\n\nQuestion to answer: ${previousQuestion.slice(0, 240)}`
                     : stripped;
                 return { ...c, text: text.trim() };
               })
