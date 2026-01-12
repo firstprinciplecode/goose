@@ -876,72 +876,52 @@ export function useChatStream({
 
       // Build the message list we send to the agent.
       // In collaborative mode, pass the full shared history so the host agent responds with context.
-      const baseForAgent =
+      const MAX_AGENT_CONTEXT_MESSAGES = 200;
+      const baseForAgentRaw =
         Array.isArray(agentContextMessages) && agentContextMessages.length > 0
           ? agentContextMessages
           : messagesRef.current;
+      const baseForAgent =
+        baseForAgentRaw.length > MAX_AGENT_CONTEXT_MESSAGES
+          ? baseForAgentRaw.slice(-MAX_AGENT_CONTEXT_MESSAGES)
+          : baseForAgentRaw;
 
       const agentMessages = (() => {
         const withUser = [...baseForAgent, newUserMsg];
         const shouldStrip = gooseMentionOnly || /@goose\b/i.test(userMessage);
         if (!shouldStrip) return withUser;
+
         const last = withUser[withUser.length - 1];
         if (!last) return withUser;
-        const previousQuestion = (() => {
-          // Find the most recent "question-like" user message (from anyone), excluding @goose triggers.
-          // This is critical when the @goose trigger is vague ("can you help?", "answer that?").
-          const isQuestionLike = (txt: string) => {
-            const t = txt.trim();
-            if (t.length < 8) return false;
-            if (/@goose\b/i.test(t)) return false;
-            if (t.includes('?')) return true;
-            return /^(what|why|how|does|do|did|is|are|can|could|should|would|where|when|which)\b/i.test(t);
-          };
 
-          let best = '';
-          for (let i = withUser.length - 2; i >= 0; i--) {
-            const m = withUser[i];
-            if (!m || (m as any).role !== 'user') continue;
-            const txt =
-              Array.isArray((m as any).content)
-                ? ((m as any).content as any[])
-                    .filter((c) => c && c.type === 'text')
-                    .map((c) => c.text || '')
-                    .join('')
-                    .trim()
-                : '';
-            if (!txt) continue;
-            if (isQuestionLike(txt)) return txt;
-            // keep a fallback that's at least non-empty and not a goose trigger
-            if (!best && !/@goose\b/i.test(txt)) best = txt;
-          }
-          return best;
+        const strippedUserText = (() => {
+          const text =
+            Array.isArray((last as any).content)
+              ? ((last as any).content as any[])
+                  .filter((c) => c && c.type === 'text')
+                  .map((c) => c.text || '')
+                  .join('')
+              : '';
+          return text.replace(/@goose\b/gi, '').trim();
         })();
+
+        // In mention-only (collaboration), don't rely on the model "inferring" what to answer.
+        // We always send the full shared history (bounded above) and explicitly instruct it to
+        // answer the most recent question in the conversation.
+        const shouldForceAnswerInstruction = gooseMentionOnly || /@goose\b/i.test(userMessage);
+        const finalUserText = shouldForceAnswerInstruction
+          ? [
+              'You are Goose in a collaborative chat.',
+              'Using the conversation above as context, answer the most recent question asked by any participant.',
+              'If there is no clear question, ask a single clarifying question.',
+              '',
+              strippedUserText ? `User message: ${strippedUserText}` : 'User message: (no additional text)',
+            ].join('\n')
+          : strippedUserText;
 
         const newLast: Message = {
           ...last,
-          content: Array.isArray(last.content)
-            ? last.content.map((c) => {
-                if (!c || c.type !== 'text') return c;
-                const stripped = (c.text || '').replace(/@goose\b/gi, '').trim();
-                // If the @goose message is vague ("do you know?", "answer that"), append a short
-                // hint with the immediately preceding question so the agent doesn't lose context.
-                // Heuristic: when the @goose message is a *meta-request* ("help answer this question")
-                // rather than the actual question itself, attach the last question-like message from
-                // the shared history so the agent answers the right thing.
-                const isMetaRequest =
-                  /\b(help|answer|explain|clarify)\b/i.test(stripped) &&
-                  (/\b(question|this|that|it)\b/i.test(stripped) || !/\?/.test(stripped));
-                const hasConcreteTopic =
-                  /\b(stands for|meaning of|define|definition|llm)\b/i.test(stripped) || /\?/.test(stripped);
-                const shouldAttachQuestion = isMetaRequest && !hasConcreteTopic;
-                const text =
-                  shouldAttachQuestion && previousQuestion
-                    ? `${stripped}\n\nQuestion to answer: ${previousQuestion.slice(0, 240)}`
-                    : stripped;
-                return { ...c, text: text.trim() };
-              })
-            : last.content,
+          content: [{ type: 'text', text: finalUserText }],
         };
         return [...withUser.slice(0, -1), newLast];
       })();
