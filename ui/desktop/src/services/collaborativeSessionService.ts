@@ -731,6 +731,7 @@ export function subscribeToIncomingInvites(
   onInvite: (invite: SessionInvite) => void
 ): RealtimeChannel {
   const channel = client.channel(`collab-invites-${userId}`);
+  let didLogBindingMismatch = false;
 
   channel.on(
     'postgres_changes',
@@ -776,6 +777,21 @@ export function subscribeToIncomingInvites(
       console.log('[CollabSession] Subscribed to incoming invites for user:', userId);
     } else if (err) {
       console.error('[CollabSession] Invite subscription error:', err);
+      const msg = String((err as any)?.message || err);
+      if (msg.includes('mismatch between server and client bindings for postgres changes')) {
+        if (!didLogBindingMismatch) {
+          didLogBindingMismatch = true;
+          console.warn(
+            '[CollabSession] Disabling invite realtime subscription due to bindings mismatch; falling back to polling.'
+          );
+        }
+        // Stop the noisy channel; UI already polls invites.
+        try {
+          client.removeChannel(channel);
+        } catch {
+          // ignore
+        }
+      }
     }
   });
 
