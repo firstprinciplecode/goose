@@ -918,16 +918,9 @@ export function useChatStream({
         // Desired behavior:
         // - The agent should interpret WHY it was mentioned based on the @goose line,
         //   then use the full conversation history above to respond appropriately.
-        // - Do NOT replace the user’s intent with an older “question-like” message; trust the model
-        //   to ground the @goose request using the provided transcript.
-        const finalUserText = [
-          strippedTriggerText,
-          '',
-          '[You were mentioned as @goose. Interpret the user’s message above (what they are asking/proposing/wanting) and respond using the full conversation history above as context.]',
-        ]
-          .filter(Boolean)
-          .join('\n')
-          .trim();
+        // - Do NOT replace the user’s intent with an older message or add meta-instructions that can
+        //   cause the model to respond about the prompt itself.
+        const finalUserText = strippedTriggerText;
 
         const newLast: Message = {
           ...last,
