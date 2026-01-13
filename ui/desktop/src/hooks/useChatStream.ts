@@ -1035,13 +1035,20 @@ export function useChatStream({
           const json = JSON.stringify(payload, null, 2);
           console.log('GOOSE_DEBUG_AGENT_PAYLOAD_JSON', json);
           // Write to disk so users can inspect/copy exactly what Goose received.
-          // Use a stable path and overwrite each time to avoid unbounded growth.
-          const outPath = '.cursor/goose-agent-payload.json';
+          // IMPORTANT: use an absolute-ish path (~) because the main process resolves relative
+          // paths against its own working directory (which considered “flaky” for users).
+          const outDir = '~/.goose-debug';
+          const outPath = `${outDir}/goose-agent-payload.json`;
           window.electron
-            ?.ensureDirectory?.('.cursor')
+            ?.ensureDirectory?.(outDir)
             .catch(() => {})
-            .finally(() => {
-              window.electron?.writeFile?.(outPath, json).catch(() => {});
+            .finally(async () => {
+              try {
+                const ok = await window.electron?.writeFile?.(outPath, json);
+                console.log('GOOSE_DEBUG_AGENT_PAYLOAD_WRITTEN', { ok, outPath });
+              } catch (e) {
+                console.error('GOOSE_DEBUG_AGENT_PAYLOAD_WRITE_FAILED', { outPath, e });
+              }
             });
         } catch (e) {
           console.error('Failed to dump agent payload', e);
