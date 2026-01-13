@@ -352,14 +352,16 @@ export function useChatStream({
   agentContextMessages,
 }: UseChatStreamProps): UseChatStreamReturn {
   
-  // Debug logging for Matrix parameters
-  console.log('🔧 useChatStream called with Matrix params:', {
-    sessionId: sessionId?.substring(0, 8),
-    fullSessionId: sessionId, // Show full session ID for debugging
-    isMatrixTab,
-    matrixRoomId: matrixRoomId ? matrixRoomId.substring(0, 20) + '...' : 'undefined',
-    tabId
-  });
+  // Debug logging for Matrix parameters (only when actually in a Matrix tab)
+  if (isMatrixTab) {
+    console.log('🔧 useChatStream called with Matrix params:', {
+      sessionId: sessionId?.substring(0, 8),
+      fullSessionId: sessionId, // Show full session ID for debugging
+      isMatrixTab,
+      matrixRoomId: matrixRoomId ? matrixRoomId.substring(0, 20) + '...' : 'undefined',
+      tabId,
+    });
+  }
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesRef = useRef<Message[]>([]);
   const [session, setSession] = useState<Session>();
