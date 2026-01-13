@@ -916,17 +916,55 @@ export function useChatStream({
         const strippedTriggerText = extractText(last).replace(/@goose\b/gi, '').trim();
 
         // Deterministic: when @goose is used in collaborative (mention-only) mode,
-        // always answer the most recent question in the shared conversation history.
+        // prefer the most recent "real question" (not a collaborator's guess phrased as a question).
         const selectedQuestion = (() => {
+          const normalizeLeading = (txt: string) =>
+            txt
+              .trim()
+              // strip common chat fillers / greetings that can precede a question
+              .replace(/^(hey|hi|hello|yo|wait|hmm|umm|um|okay|ok)[,:\s]+/i, '')
+              .trim();
+
+          const isGuessLike = (txt: string) => {
+            const t = txt.trim().toLowerCase();
+            return (
+              /^hmm\b/.test(t) ||
+              /^i\s+think\b/.test(t) ||
+              /^maybe\b/.test(t) ||
+              /^might\b/.test(t) ||
+              /^could\s+be\b/.test(t) ||
+              /^sounds\s+like\b/.test(t)
+            );
+          };
+
+          const startsWithQuestionWord = (txt: string) => {
+            const t = normalizeLeading(txt);
+            return /^(what|why|how|does|do|did|is|are|can|could|should|would|where|when|which)\b/i.test(t);
+          };
+
+          let best: { score: number; text: string } | null = null;
           for (let i = withUser.length - 2; i >= 0; i--) {
             const m = withUser[i];
             if (!m || (m as any).role !== 'user') continue;
             const txt = extractText(m);
             if (!txt) continue;
             if (/@goose\b/i.test(txt)) continue;
-            if (txt.includes('?')) return txt;
+
+            // Score:
+            // - Strong preference for messages that look like direct questions.
+            // - Penalize "guess-like" messages that end with "?" but are really suggestions.
+            let score = 0;
+            if (txt.includes('?')) score += 1;
+            if (startsWithQuestionWord(txt)) score += 2;
+            if (isGuessLike(txt)) score -= 2;
+
+            if (!best || score > best.score) {
+              best = { score, text: txt };
+              // Fast-exit if we hit a very strong candidate.
+              if (score >= 3) break;
+            }
           }
-          return '';
+          return best?.score && best.score > 0 ? best.text : '';
         })();
 
         const finalUserText = selectedQuestion || strippedTriggerText;
