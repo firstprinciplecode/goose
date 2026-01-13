@@ -887,10 +887,19 @@ export function useChatStream({
       // Build the message list we send to the agent.
       // In collaborative mode, pass the full shared history so the host agent responds with context.
       const MAX_AGENT_CONTEXT_MESSAGES = 200;
-      const baseForAgentRaw =
+      const baseForAgentRawAll =
         Array.isArray(agentContextMessages) && agentContextMessages.length > 0
           ? agentContextMessages
           : messagesRef.current;
+
+      // In collaborative mention-only mode, the agent should primarily reason over the
+      // human↔human transcript. Including the agent's own previous "I need context" replies
+      // can trap it in a loop where it keeps asking for clarification even though the
+      // question exists earlier in the chat.
+      const baseForAgentRaw =
+        gooseMentionOnly && Array.isArray(agentContextMessages) && agentContextMessages.length > 0
+          ? baseForAgentRawAll.filter((m) => (m as any)?.role === 'user')
+          : baseForAgentRawAll;
       const baseForAgent =
         baseForAgentRaw.length > MAX_AGENT_CONTEXT_MESSAGES
           ? baseForAgentRaw.slice(-MAX_AGENT_CONTEXT_MESSAGES)
@@ -950,9 +959,12 @@ export function useChatStream({
         gooseMentionOnly && hasSupabaseContext && /@goose\b/i.test(rawTriggerText)
           ? ({
               id: 'agent-only-collab-invoke-v1',
-              role: 'assistant',
+              // Use user role so this instruction is treated as authoritative guidance,
+              // but keep it hidden from the UI.
+              role: 'user',
               created: Math.floor(Date.now() / 1000),
-              metadata: { user_visible: false, agent_visible: true },
+              // Server-side MessageMetadata is camelCase (userVisible/agentVisible).
+              metadata: { userVisible: false, agentVisible: true },
               content: [
                 {
                   type: 'text',
