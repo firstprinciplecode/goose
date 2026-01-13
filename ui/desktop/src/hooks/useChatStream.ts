@@ -920,7 +920,30 @@ export function useChatStream({
         //   then use the full conversation history above to respond appropriately.
         // - Do NOT replace the user’s intent with an older message or add meta-instructions that can
         //   cause the model to respond about the prompt itself.
-        const finalUserText = strippedTriggerText;
+        const mostRecentQuestion = (() => {
+          for (let i = withUser.length - 2; i >= 0; i--) {
+            const m = withUser[i];
+            if (!m || (m as any).role !== 'user') continue;
+            const txt = extractText(m);
+            if (!txt) continue;
+            if (/@goose\b/i.test(txt)) continue;
+            // Ignore common join/leave system lines that can appear as user-role messages
+            if (/joined the conversation|left the conversation/i.test(txt)) continue;
+            if (txt.includes('?')) return txt;
+          }
+          return '';
+        })();
+
+        // If the trigger is vague ("help us here") and doesn't contain a concrete question,
+        // append the most recent real question as a lightweight anchor.
+        const triggerIsVague =
+          !strippedTriggerText.includes('?') &&
+          /\b(help|here|figure|thoughts|any idea|can you)\b/i.test(strippedTriggerText);
+
+        const finalUserText =
+          triggerIsVague && mostRecentQuestion
+            ? `${strippedTriggerText}\n\nContext question: ${mostRecentQuestion}`
+            : strippedTriggerText;
 
         const newLast: Message = {
           ...last,
