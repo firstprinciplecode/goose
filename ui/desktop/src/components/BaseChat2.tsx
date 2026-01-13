@@ -209,16 +209,47 @@ function BaseChatContent({
   // Guest leave handling:
   // Closing the tab/app should mark the guest inactive so the host can un-mute Goose.
   // We only do this for non-host participants.
+  const guestLeaveSnapshotRef = useRef<{
+    isCollaborative: boolean;
+    isHost: boolean;
+    collabSessionId: string | null;
+  }>({ isCollaborative: false, isHost: false, collabSessionId: null });
+  const guestLeaveDidRunRef = useRef(false);
+  const guestLeaveMountedAtRef = useRef<number>(Date.now());
+
   useEffect(() => {
+    guestLeaveSnapshotRef.current = {
+      isCollaborative: collab.state.isCollaborative,
+      isHost: collab.state.isHost,
+      collabSessionId: collab.state.session?.id ? String(collab.state.session.id) : null,
+    };
+  }, [collab.state.isCollaborative, collab.state.isHost, collab.state.session?.id]);
+
+  useEffect(() => {
+    guestLeaveDidRunRef.current = false;
+    guestLeaveMountedAtRef.current = Date.now();
+
     return () => {
-      if (!collab.state.isCollaborative) return;
-      if (collab.state.isHost) return;
+      // IMPORTANT:
+      // React runs effect cleanup on dependency changes, not just "real unmount".
+      // We keep dependencies stable and use refs for latest state, so this only runs
+      // on actual unmount (or sessionId change).
+      const snap = guestLeaveSnapshotRef.current;
+      if (!snap.isCollaborative) return;
+      if (snap.isHost) return;
+      if (guestLeaveDidRunRef.current) return;
+
+      // Guard against React strict-mode/dev double-invoke / rapid remounts.
+      // If we mounted and "unmounted" instantly, skip to avoid leaving immediately.
+      if (Date.now() - guestLeaveMountedAtRef.current < 500) return;
+
+      guestLeaveDidRunRef.current = true;
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'E',location:'BaseChat2.tsx:unmount',message:'guest-unmount-calling-leave',data:{gooseSessionId:String(sessionId).slice(0,12),collabSessionId:collab.state.session?.id?String(collab.state.session?.id).slice(0,12):null},timestamp:Date.now()})}).catch(()=>{});
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'E',location:'BaseChat2.tsx:unmount',message:'guest-unmount-calling-leave',data:{gooseSessionId:String(sessionId).slice(0,12),collabSessionId:snap.collabSessionId?snap.collabSessionId.slice(0,12):null},timestamp:Date.now()})}).catch(()=>{});
       // #endregion agent log
       void collab.actions.leave();
     };
-  }, [sessionId, collab.state.isCollaborative, collab.state.isHost, collab.state.session?.id, collab.actions]);
+  }, [sessionId, collab.actions]);
   
   // Debug: log collab state on every render
   console.log('🔷 BaseChat2 RENDER - collab state:', {

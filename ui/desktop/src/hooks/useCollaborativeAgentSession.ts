@@ -139,6 +139,10 @@ export function useCollaborativeAgentSession(
   const messageSubRef = useRef<RealtimeChannel | null>(null);
   const participantSubRef = useRef<RealtimeChannel | null>(null);
   const sessionSubRef = useRef<RealtimeChannel | null>(null);
+  // Guards for idempotency / dedupe
+  const leaveInFlightRef = useRef(false);
+  const hasLeftRef = useRef(false);
+  const systemEventLastAtRef = useRef<Map<string, number>>(new Map()); // key -> last timestamp
 
   // Derived state
   const isCollaborative = !!collabSession?.is_active;
@@ -225,6 +229,16 @@ export function useCollaborativeAgentSession(
             console.log('[CollabSession] 📢 Skipping join message for self');
             return;
           }
+
+          // Dedupe join system messages if realtime emits duplicates in a burst
+          const joinKey = `join:${sessionId}:${participant.user_id}`;
+          const now = Date.now();
+          const lastJoinAt = systemEventLastAtRef.current.get(joinKey) || 0;
+          if (now - lastJoinAt < 3000) {
+            console.log('[CollabSession] 📢 Skipping duplicate join system message:', joinKey);
+            return;
+          }
+          systemEventLastAtRef.current.set(joinKey, now);
           // #region agent log
           fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'E',location:'useCollaborativeAgentSession.ts:participantJoin',message:'participant-join',data:{collabSessionId:String(sessionId).slice(0,12),userId:String(participant.user_id).slice(0,8),isActive:true},timestamp:Date.now()})}).catch(()=>{});
           // #endregion agent log
@@ -272,6 +286,16 @@ export function useCollaborativeAgentSession(
               p.user_id === participant.user_id ? { ...p, is_active: false } : p
             )
           );
+
+          // Dedupe leave system messages if realtime emits duplicates in a burst
+          const leaveKey = `leave:${sessionId}:${participant.user_id}`;
+          const now = Date.now();
+          const lastLeaveAt = systemEventLastAtRef.current.get(leaveKey) || 0;
+          if (now - lastLeaveAt < 3000) {
+            console.log('[CollabSession] 👋 Skipping duplicate leave system message:', leaveKey);
+            return;
+          }
+          systemEventLastAtRef.current.set(leaveKey, now);
           // #region agent log
           fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'E',location:'useCollaborativeAgentSession.ts:participantLeave',message:'participant-leave',data:{collabSessionId:String(sessionId).slice(0,12),userId:String(participant.user_id).slice(0,8),isActive:false},timestamp:Date.now()})}).catch(()=>{});
           // #endregion agent log
@@ -452,17 +476,24 @@ export function useCollaborativeAgentSession(
   const leave = useCallback(async () => {
     if (!client || !collabSession || !authSession?.user?.id) return;
 
+    // Idempotent leave: repeated calls can happen due to UI teardown or duplicate events.
+    if (leaveInFlightRef.current || hasLeftRef.current) return;
+    leaveInFlightRef.current = true;
+
     try {
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'E',location:'useCollaborativeAgentSession.ts:leave',message:'leave-called',data:{collabSessionId:String(collabSession.id).slice(0,12),userId:String(authSession.user.id).slice(0,8),isHost:!!isHost},timestamp:Date.now()})}).catch(()=>{});
       // #endregion agent log
       await leaveSession(client, collabSession.id, authSession.user.id);
+      hasLeftRef.current = true;
       cleanupSubscriptions();
       setCollabSession(null);
       setParticipants([]);
       setMessages([]);
     } catch (e) {
       setError(getErrorMessage(e));
+    } finally {
+      leaveInFlightRef.current = false;
     }
   }, [client, collabSession, authSession?.user?.id, cleanupSubscriptions]);
 
