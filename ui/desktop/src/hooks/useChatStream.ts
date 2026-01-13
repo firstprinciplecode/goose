@@ -921,6 +921,20 @@ export function useChatStream({
         // - Do NOT replace the user’s intent with an older message or add meta-instructions that can
         //   cause the model to respond about the prompt itself.
         const mostRecentQuestion = (() => {
+          const isGuessLike = (txt: string) => {
+            const t = txt.trim().toLowerCase();
+            return (
+              /^hmm\b/.test(t) ||
+              /^i\s+think\b/.test(t) ||
+              /^no\s+i\s+think\b/.test(t) ||
+              /^maybe\b/.test(t) ||
+              /^might\b/.test(t) ||
+              /^could\s+be\b/.test(t) ||
+              /^sounds\s+like\b/.test(t)
+            );
+          };
+
+          let fallback: string = '';
           for (let i = withUser.length - 2; i >= 0; i--) {
             const m = withUser[i];
             if (!m || (m as any).role !== 'user') continue;
@@ -929,16 +943,27 @@ export function useChatStream({
             if (/@goose\b/i.test(txt)) continue;
             // Ignore common join/leave system lines that can appear as user-role messages
             if (/joined the conversation|left the conversation/i.test(txt)) continue;
-            if (txt.includes('?')) return txt;
+            if (!txt.includes('?')) continue;
+
+            // Prefer "real questions" over guesses phrased as questions.
+            if (!fallback) fallback = txt;
+            if (isGuessLike(txt)) continue;
+            return txt;
           }
-          return '';
+          return fallback;
         })();
 
         // If the trigger is vague ("help us here") and doesn't contain a concrete question,
         // append the most recent real question as a lightweight anchor.
+        const genericVagueQuestion =
+          /\b(what\s+is\s+it|what'?s\s+that|what\s+is\s+this|what\s+do\s+you\s+mean|help\s+us\s+here|can\s+you\s+help\s+us\s+here)\b/i.test(
+            strippedTriggerText
+          );
+
         const triggerIsVague =
-          !strippedTriggerText.includes('?') &&
-          /\b(help|here|figure|thoughts|any idea|can you)\b/i.test(strippedTriggerText);
+          genericVagueQuestion ||
+          (!strippedTriggerText.includes('?') &&
+            /\b(help|here|figure|thoughts|any idea|can you)\b/i.test(strippedTriggerText));
 
         const finalUserText =
           triggerIsVague && mostRecentQuestion
