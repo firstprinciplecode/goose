@@ -918,6 +918,38 @@ export function useChatStream({
         })(),
       });
 
+      // Explicit context snapshot for debugging: show exactly what the agent is conditioned on.
+      // This is intentionally compact (last N messages, truncated text) to avoid huge logs.
+      const contextSource =
+        Array.isArray(agentContextMessages) && agentContextMessages.length > 0 ? 'supabase' : 'local';
+      const toTextPreview = (m: Message): string => {
+        const text =
+          Array.isArray((m as any)?.content)
+            ? ((m as any).content as any[])
+                .filter((c) => c && c.type === 'text')
+                .map((c) => c.text || '')
+                .join('')
+            : '';
+        return String(text || '').replace(/\s+/g, ' ').trim();
+      };
+      const contextTail = agentMessages
+        .slice(Math.max(0, agentMessages.length - 8))
+        .map((m) => ({
+          role: (m as any)?.role,
+          id: (m as any)?.id ? String((m as any).id).slice(0, 12) : null,
+          text: toTextPreview(m).slice(0, 120),
+        }));
+      console.log('🧠 Agent context snapshot:', {
+        sessionId,
+        contextSource,
+        agentContextCount: Array.isArray(agentContextMessages) ? agentContextMessages.length : 0,
+        agentMessagesCount: agentMessages.length,
+        tail: contextTail,
+      });
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'ctx-pre',hypothesisId:'CTX',location:'useChatStream.ts:handleSubmit',message:'agent-context-snapshot',data:{gooseSessionId:String(sessionId).slice(0,12),contextSource,agentContextCount:Array.isArray(agentContextMessages)?agentContextMessages.length:0,agentMessagesCount:agentMessages.length,tail:contextTail},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
+
       // If the last user message is empty, don't hit the agent.
       const lastForAgent = agentMessages[agentMessages.length - 1];
       const lastTextForAgent =
