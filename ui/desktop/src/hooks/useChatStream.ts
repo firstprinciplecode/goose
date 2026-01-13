@@ -894,88 +894,9 @@ export function useChatStream({
           ? baseForAgentRaw.slice(-MAX_AGENT_CONTEXT_MESSAGES)
           : baseForAgentRaw;
 
-      const agentMessages = (() => {
-        const withUser = [...baseForAgent, newUserMsg];
-        const shouldStrip = gooseMentionOnly || /@goose\b/i.test(userMessage);
-        if (!shouldStrip) return withUser;
-
-        const last = withUser[withUser.length - 1];
-        if (!last) return withUser;
-
-        const extractText = (m: Message): string => {
-          const text =
-            Array.isArray((m as any).content)
-              ? ((m as any).content as any[])
-                  .filter((c) => c && c.type === 'text')
-                  .map((c) => c.text || '')
-                  .join('')
-              : '';
-          return String(text || '').trim();
-        };
-
-        const strippedTriggerText = extractText(last).replace(/@goose\b/gi, '').trim();
-
-        // Desired behavior:
-        // - The agent should interpret WHY it was mentioned based on the @goose line,
-        //   then use the full conversation history above to respond appropriately.
-        // - Do NOT replace the user’s intent with an older message or add meta-instructions that can
-        //   cause the model to respond about the prompt itself.
-        const mostRecentQuestion = (() => {
-          const isGuessLike = (txt: string) => {
-            const t = txt.trim().toLowerCase();
-            return (
-              /^hmm\b/.test(t) ||
-              /^i\s+think\b/.test(t) ||
-              /^no\s+i\s+think\b/.test(t) ||
-              /^maybe\b/.test(t) ||
-              /^might\b/.test(t) ||
-              /^could\s+be\b/.test(t) ||
-              /^sounds\s+like\b/.test(t)
-            );
-          };
-
-          let fallback: string = '';
-          for (let i = withUser.length - 2; i >= 0; i--) {
-            const m = withUser[i];
-            if (!m || (m as any).role !== 'user') continue;
-            const txt = extractText(m);
-            if (!txt) continue;
-            if (/@goose\b/i.test(txt)) continue;
-            // Ignore common join/leave system lines that can appear as user-role messages
-            if (/joined the conversation|left the conversation/i.test(txt)) continue;
-            if (!txt.includes('?')) continue;
-
-            // Prefer "real questions" over guesses phrased as questions.
-            if (!fallback) fallback = txt;
-            if (isGuessLike(txt)) continue;
-            return txt;
-          }
-          return fallback;
-        })();
-
-        // If the trigger is vague ("help us here") and doesn't contain a concrete question,
-        // append the most recent real question as a lightweight anchor.
-        const genericVagueQuestion =
-          /\b(what\s+is\s+it|what'?s\s+that|what\s+is\s+this|what\s+do\s+you\s+mean|help\s+us\s+here|can\s+you\s+help\s+us\s+here)\b/i.test(
-            strippedTriggerText
-          );
-
-        const triggerIsVague =
-          genericVagueQuestion ||
-          (!strippedTriggerText.includes('?') &&
-            /\b(help|here|figure|thoughts|any idea|can you)\b/i.test(strippedTriggerText));
-
-        const finalUserText =
-          triggerIsVague && mostRecentQuestion
-            ? `${strippedTriggerText}\n\nContext question: ${mostRecentQuestion}`
-            : strippedTriggerText;
-
-        const newLast: Message = {
-          ...last,
-          content: [{ type: 'text', text: finalUserText }],
-        };
-        return [...withUser.slice(0, -1), newLast];
-      })();
+      // When @goose is invoked, do NOT rewrite or augment the prompt.
+      // Send the full conversation (shared transcript if provided) plus the user's message.
+      const agentMessages = [...baseForAgent, newUserMsg];
 
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {
@@ -995,7 +916,7 @@ export function useChatStream({
         })(),
       });
 
-      // If stripping @goose results in an empty user message, don't hit the agent.
+      // If the last user message is empty, don't hit the agent.
       const lastForAgent = agentMessages[agentMessages.length - 1];
       const lastTextForAgent =
         Array.isArray(lastForAgent?.content)
@@ -1006,9 +927,7 @@ export function useChatStream({
               .trim()
           : '';
       if (!lastTextForAgent) {
-        log.messages('skipping-ai-empty-after-strip', currentMessages.length, {
-          note: 'message became empty after stripping @goose',
-        });
+        log.messages('skipping-ai-empty-message', currentMessages.length, { note: 'empty message' });
         setChatState(ChatState.Idle);
         return;
       }
