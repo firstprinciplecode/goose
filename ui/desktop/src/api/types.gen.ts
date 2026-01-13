@@ -355,6 +355,24 @@ export type ImageContent = {
     mimeType: string;
 };
 
+export type ImportSessionMessagesRequest = {
+    /**
+     * Messages to append/import into the session conversation (idempotent).
+     */
+    messages: Array<Message>;
+};
+
+export type ImportSessionMessagesResponse = {
+    /**
+     * Number of messages imported (inserted).
+     */
+    imported: number;
+    /**
+     * Number of messages skipped because they already exist.
+     */
+    skipped: number;
+};
+
 export type InspectJobResponse = {
     processStartTime?: string | null;
     runningDurationSeconds?: number | null;
@@ -2291,6 +2309,42 @@ export type UpdateSessionDescriptionResponses = {
      */
     200: unknown;
 };
+
+export type ImportSessionMessagesData = {
+    body: ImportSessionMessagesRequest;
+    path: {
+        /**
+         * Unique identifier for the session
+         */
+        session_id: string;
+    };
+    query?: never;
+    url: '/sessions/{session_id}/messages/import';
+};
+
+export type ImportSessionMessagesErrors = {
+    /**
+     * Unauthorized - Invalid or missing API key
+     */
+    401: unknown;
+    /**
+     * Session not found
+     */
+    404: unknown;
+    /**
+     * Internal server error
+     */
+    500: unknown;
+};
+
+export type ImportSessionMessagesResponses = {
+    /**
+     * Messages imported successfully
+     */
+    200: ImportSessionMessagesResponse;
+};
+
+export type ImportSessionMessagesResponse2 = ImportSessionMessagesResponses[keyof ImportSessionMessagesResponses];
 
 export type StatusData = {
     body?: never;

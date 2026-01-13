@@ -28,6 +28,7 @@ import ParticipantsBar from './ParticipantsBar';
 import PendingInvitesInHistory from './PendingInvitesInHistory';
 import { useComments } from '../hooks/useComments';
 import { useTabContext } from '../contexts/TabContext';
+import { client as apiClient } from '../api/client.gen';
 
 interface BaseChatProps {
   setChat?: (chat: ChatType) => void; // Made optional for inactive tabs
@@ -346,90 +347,76 @@ function BaseChatContent({
   }, [messages, collab.state.isCollaborative, collab.state.messages, collab.state.participants, convertCollabMessage]);
 
   // ==========================================================================
-  // AI Context Sync: Mirror Supabase messages to local Goose backend
-  // This ensures Goose has full conversation context when @mentioned
+  // Collab transcript persistence (Option B):
+  // When collaboration ends (guest leaves), persist the shared Supabase transcript into the
+  // host's local Goose session via a dedicated import endpoint. This avoids using /reply.
   // ==========================================================================
-  const syncedMessageIdsRef = useRef<Set<string>>(new Set());
-  
-  useEffect(() => {
-    // Only sync when in collaborative mode with messages
-    if (!collab.state.isCollaborative || collab.state.messages.length === 0) {
-      return;
-    }
+  const prevCollaborativeModeRef = useRef<boolean>(false);
 
-    // IMPORTANT: This "sync via /reply" has proven to be destabilizing (can cause repeated agent runs / flicker).
-    // We already provide full shared context to the host agent via `agentContextMessages`, so disable this path.
-    // Keep debug instrumentation in place for verification; this early-return prevents the side-effect.
-    if (true) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'D',location:'BaseChat2.tsx:syncEffect',message:'sync-collab-to-backend-disabled',data:{gooseSessionId:String(sessionId).slice(0,12),collabSessionId:collab.state.session?.id?String(collab.state.session?.id).slice(0,12):null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion agent log
-      return;
-    }
-    
-    // Find messages that haven't been synced yet
-    const unsyncedMessages = collab.state.messages.filter(
-      msg => !syncedMessageIdsRef.current.has(msg.id)
-    );
-    
-    if (unsyncedMessages.length === 0) {
-      return;
-    }
-    
-    console.log('🔄 Syncing collab messages to Goose backend for AI context:', {
-      unsyncedCount: unsyncedMessages.length,
-      sessionId,
-    });
+  const importCollabTranscriptToLocal = useCallback(async () => {
+    if (!collab.state.isCollaborative || !collab.state.isHost) return;
+
+    const baseUrl = apiClient.getConfig().baseUrl || '';
+    const apiUrl = `${baseUrl}/sessions/${sessionId}/messages/import`;
+
+    // Import only non-assistant messages to avoid duplicating host assistant replies which already exist locally.
+    const messagesToImport = collab.state.messages
+      .filter((m) => m && m.message_type !== 'assistant')
+      .map((m) => {
+        const created = Math.floor(new Date(m.created_at).getTime() / 1000);
+        const text = m.message_type === 'system' ? `[system] ${m.content}` : m.content;
+        return {
+          role: 'user' as const,
+          created,
+          content: [{ type: 'text' as const, text }],
+        };
+      });
+
     // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'D',location:'BaseChat2.tsx:syncEffect',message:'sync-collab-to-backend-start',data:{gooseSessionId:String(sessionId).slice(0,12),collabSessionId:collab.state.session?.id?String(collab.state.session?.id).slice(0,12):null,unsyncedCount:unsyncedMessages.length},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'persist-pre',hypothesisId:'P1',location:'BaseChat2.tsx:import',message:'import-collab-transcript-start',data:{gooseSessionId:String(sessionId).slice(0,12),collabSessionId:collab.state.session?.id?String(collab.state.session?.id).slice(0,12):null,count:messagesToImport.length},timestamp:Date.now()})}).catch(()=>{});
     // #endregion agent log
-    
-    // Sync messages to the Goose backend
-    const syncToBackend = async () => {
-      try {
-        const { replyHandler } = await import('../api');
-        
-        // Convert Supabase messages to the format expected by the backend
-        const backendMessages = unsyncedMessages.map(msg => ({
-          id: msg.id,
-          role: msg.message_type === 'assistant' ? 'assistant' : 'user',
-          content: [{
-            type: 'text' as const,
-            text: msg.content,
-          }],
-          created: Math.floor(new Date(msg.created_at).getTime() / 1000),
-        }));
-        
-        // Use replyHandler to sync messages to the backend session
-        await replyHandler({
-          body: {
-            session_id: sessionId,
-            messages: backendMessages,
-          },
-          throwOnError: false,
-        });
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'D',location:'BaseChat2.tsx:syncEffect',message:'sync-collab-to-backend-done',data:{gooseSessionId:String(sessionId).slice(0,12),syncedCount:unsyncedMessages.length},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
-        
-        // Mark these messages as synced
-        unsyncedMessages.forEach(msg => {
-          syncedMessageIdsRef.current.add(msg.id);
-        });
-        
-        console.log('✅ Synced collab messages to Goose backend:', unsyncedMessages.length);
-      } catch (error) {
-        console.error('❌ Failed to sync collab messages to Goose backend:', error);
-      }
-    };
-    
-    syncToBackend();
-  }, [collab.state.isCollaborative, collab.state.messages, sessionId]);
-  
-  // Reset synced IDs when session changes
+
+    try {
+      const secretKey = await window.electron.getSecretKey();
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Secret-Key': secretKey,
+          ...(apiClient.getConfig().headers || {}),
+        },
+        body: JSON.stringify({ messages: messagesToImport }),
+      });
+
+      const ok = response.ok;
+      const status = response.status;
+      const payload = await response.json().catch(() => null);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'persist-pre',hypothesisId:'P1',location:'BaseChat2.tsx:import',message:'import-collab-transcript-result',data:{ok,status,payload,gooseSessionId:String(sessionId).slice(0,12)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
+    } catch (e) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'persist-pre',hypothesisId:'P1',location:'BaseChat2.tsx:import',message:'import-collab-transcript-error',data:{error:String((e as any)?.message||e),gooseSessionId:String(sessionId).slice(0,12)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
+    }
+  }, [collab.state.isCollaborative, collab.state.isHost, collab.state.messages, collab.state.session?.id, sessionId]);
+
   useEffect(() => {
-    syncedMessageIdsRef.current.clear();
-  }, [sessionId]);
+    if (!collab.state.isCollaborative || !collab.state.isHost) return;
+    const prev = prevCollaborativeModeRef.current;
+    const now = !!collab.state.collaborativeMode;
+    if (prev && !now) {
+      // Transition from collab-mode (guests present) → solo-mode: persist transcript.
+      void importCollabTranscriptToLocal();
+    }
+    prevCollaborativeModeRef.current = now;
+  }, [
+    collab.state.isCollaborative,
+    collab.state.isHost,
+    collab.state.collaborativeMode,
+    importCollabTranscriptToLocal,
+  ]);
 
   // Auto-send @goose off for Matrix chats on initial load
   const hasAutoDisabledGoose = useRef(false);

@@ -1692,6 +1692,61 @@
         ]
       }
     },
+    "/sessions/{session_id}/messages/import": {
+      "post": {
+        "tags": [
+          "Session Management"
+        ],
+        "operationId": "import_session_messages",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Unique identifier for the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportSessionMessagesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Messages imported successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportSessionMessagesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing API key"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/status": {
       "get": {
         "tags": [
@@ -2685,6 +2740,40 @@
           },
           "mimeType": {
             "type": "string"
+          }
+        }
+      },
+      "ImportSessionMessagesRequest": {
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "description": "Messages to append/import into the session conversation (idempotent)."
+          }
+        }
+      },
+      "ImportSessionMessagesResponse": {
+        "type": "object",
+        "required": [
+          "imported",
+          "skipped"
+        ],
+        "properties": {
+          "imported": {
+            "type": "integer",
+            "description": "Number of messages imported (inserted).",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "description": "Number of messages skipped because they already exist.",
+            "minimum": 0
           }
         }
       },
