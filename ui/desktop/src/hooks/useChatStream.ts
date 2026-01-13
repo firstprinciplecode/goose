@@ -939,13 +939,20 @@ export function useChatStream({
           id: (m as any)?.id ? String((m as any).id).slice(0, 12) : null,
           text: toTextPreview(m).slice(0, 120),
         }));
-      console.log('🧠 Agent context snapshot:', {
+      // Make this extremely easy to find in DevTools (users can Cmd+F for AGENT_CONTEXT_SNAPSHOT).
+      console.log('AGENT_CONTEXT_SNAPSHOT', {
         sessionId,
         contextSource,
         agentContextCount: Array.isArray(agentContextMessages) ? agentContextMessages.length : 0,
         agentMessagesCount: agentMessages.length,
         tail: contextTail,
       });
+      console.log(
+        'AGENT_CONTEXT_TAIL\n' +
+          contextTail
+            .map((m) => `[${m.role}] ${m.text}`)
+            .join('\n')
+      );
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'ctx-pre',hypothesisId:'CTX',location:'useChatStream.ts:handleSubmit',message:'agent-context-snapshot',data:{gooseSessionId:String(sessionId).slice(0,12),contextSource,agentContextCount:Array.isArray(agentContextMessages)?agentContextMessages.length:0,agentMessagesCount:agentMessages.length,tail:contextTail},timestamp:Date.now()})}).catch(()=>{});
       // #endregion agent log
