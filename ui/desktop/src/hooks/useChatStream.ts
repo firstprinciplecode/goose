@@ -940,13 +940,40 @@ export function useChatStream({
         ? [...baseForAgent, finalUserMsg]
         : [...baseForAgent.slice(0, -1), finalUserMsg];
 
+      // Collaborative sessions: we do NOT rewrite the conversation or the trigger message.
+      // However, models can still default to “ask clarifying questions” when the trigger is meta
+      // ("what's the answer", "help us here"). Provide a hidden, agent-only instruction so Goose
+      // behaves like a participant in the ongoing conversation and answers the current debate.
+      //
+      // This message is NOT user-visible, but IS agent-visible.
+      const collabInvocationInstruction: Message | null =
+        gooseMentionOnly && hasSupabaseContext && /@goose\b/i.test(rawTriggerText)
+          ? ({
+              id: 'agent-only-collab-invoke-v1',
+              role: 'assistant',
+              created: Math.floor(Date.now() / 1000),
+              metadata: { user_visible: false, agent_visible: true },
+              content: [
+                {
+                  type: 'text',
+                  text:
+                    'You are participating in a multi-human chat. When you are invoked with @goose, read the full conversation so far and respond to the ongoing topic. If the invocation message is meta or referential (e.g. "what do you think", "what\'s the answer", "help us here", "who\'s right", "what is it"), treat it as a request to answer the most recent substantive question/disagreement earlier in the chat. Do not ask for clarification if there is a clear preceding question or debate; only ask a clarifying question if there is genuinely no prior topic/question to answer.',
+                },
+              ],
+            } as Message)
+          : null;
+
+      const agentMessagesForSend = collabInvocationInstruction
+        ? [collabInvocationInstruction, ...agentMessages]
+        : agentMessages;
+
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {
         agentContextProvided: Array.isArray(agentContextMessages) ? agentContextMessages.length : 0,
         messagesRefCount: messagesRef.current.length,
-        agentMessagesCount: agentMessages.length,
+        agentMessagesCount: agentMessagesForSend.length,
         lastTextForAgentPreview: (() => {
-          const last = agentMessages[agentMessages.length - 1];
+          const last = agentMessagesForSend[agentMessagesForSend.length - 1];
           const text =
             Array.isArray(last?.content)
               ? (last.content as any[])
@@ -972,8 +999,8 @@ export function useChatStream({
             : '';
         return String(text || '').replace(/\s+/g, ' ').trim();
       };
-      const contextTail = agentMessages
-        .slice(Math.max(0, agentMessages.length - 8))
+      const contextTail = agentMessagesForSend
+        .slice(Math.max(0, agentMessagesForSend.length - 8))
         .map((m) => ({
           role: (m as any)?.role,
           id: (m as any)?.id ? String((m as any).id).slice(0, 12) : null,
@@ -984,7 +1011,7 @@ export function useChatStream({
         sessionId,
         contextSource,
         agentContextCount: Array.isArray(agentContextMessages) ? agentContextMessages.length : 0,
-        agentMessagesCount: agentMessages.length,
+        agentMessagesCount: agentMessagesForSend.length,
         finalPromptTextPreview: finalPromptText ? finalPromptText.slice(0, 120) : '',
         replacedFinalPrompt: false,
         shouldAppendNewUserMsg,
@@ -997,11 +1024,11 @@ export function useChatStream({
             .join('\n')
       );
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'ctx-pre',hypothesisId:'CTX',location:'useChatStream.ts:handleSubmit',message:'agent-context-snapshot',data:{gooseSessionId:String(sessionId).slice(0,12),contextSource,agentContextCount:Array.isArray(agentContextMessages)?agentContextMessages.length:0,agentMessagesCount:agentMessages.length,finalPromptTextPreview:finalPromptText?finalPromptText.slice(0,120):'',replacedFinalPrompt:false,shouldAppendNewUserMsg,tail:contextTail},timestamp:Date.now()})}).catch(()=>{});
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'ctx-pre',hypothesisId:'CTX',location:'useChatStream.ts:handleSubmit',message:'agent-context-snapshot',data:{gooseSessionId:String(sessionId).slice(0,12),contextSource,agentContextCount:Array.isArray(agentContextMessages)?agentContextMessages.length:0,agentMessagesCount:agentMessagesForSend.length,finalPromptTextPreview:finalPromptText?finalPromptText.slice(0,120):'',replacedFinalPrompt:false,shouldAppendNewUserMsg,tail:contextTail},timestamp:Date.now()})}).catch(()=>{});
       // #endregion agent log
 
       // If the last user message is empty, don't hit the agent.
-      const lastForAgent = agentMessages[agentMessages.length - 1];
+      const lastForAgent = agentMessagesForSend[agentMessagesForSend.length - 1];
       const lastTextForAgent =
         Array.isArray(lastForAgent?.content)
           ? lastForAgent.content
@@ -1117,7 +1144,7 @@ export function useChatStream({
             ...config.headers,
           },
           body: JSON.stringify({
-            messages: agentMessages,
+            messages: agentMessagesForSend,
             session_id: currentSession.id, // Use the actual session ID from the backend
           }),
           signal: abortControllerRef.current.signal,
