@@ -914,54 +914,22 @@ export function useChatStream({
         Array.isArray(agentContextMessages) && agentContextMessages.length > 0;
 
       const rawTriggerText = String(userMessage || '').trim();
-      const strippedTriggerText = rawTriggerText.replace(/@goose\b/gi, '').trim();
-
-      // If the trigger is vague ("what do you think", "help us here", "what is it"), answer the most
-      // recent explicit question in the transcript instead of prompting the model with anaphora ("it").
-      const isVagueTrigger = /\b(what do you think|help us here|what is it|what'?s that|what is this)\b/i.test(
-        strippedTriggerText
-      );
-
-      const questionToAnswer = (() => {
-        // Search backwards through the transcript (excluding the trigger itself).
-        const isGuessLike = (txt: string) => {
-          const t = txt.trim().toLowerCase();
-          return (
-            /^i\s+think\b/.test(t) ||
-            /^nah\s+i\s+think\b/.test(t) ||
-            /^no\s+i\s+think\b/.test(t) ||
-            /^maybe\b/.test(t) ||
-            /^might\b/.test(t) ||
-            /^could\s+be\b/.test(t) ||
-            /^sounds\s+like\b/.test(t)
-          );
-        };
-
-        let fallback = '';
-        for (let i = baseForAgent.length - 1; i >= 0; i--) {
-          const m = baseForAgent[i];
-          if (!m || (m as any).role !== 'user') continue;
-          const txt = extractText(m);
-          if (!txt) continue;
-          if (/@goose\b/i.test(txt)) continue;
-          if (/joined the conversation|left the conversation/i.test(txt)) continue;
-          if (!txt.includes('?')) continue;
-          if (!fallback) fallback = txt;
-          if (isGuessLike(txt)) continue;
-          return txt;
-        }
-        return fallback;
-      })();
 
       // If Supabase already includes the goose_trigger line, don't add a duplicate local user message
       // with the same text — it can bias the model toward the generic trigger and away from the question.
       const lastBaseText = baseForAgent.length > 0 ? extractText(baseForAgent[baseForAgent.length - 1]) : '';
-      const shouldAppendNewUserMsg =
-        !hasSupabaseContext ||
-        (strippedTriggerText && lastBaseText && lastBaseText !== strippedTriggerText && lastBaseText !== rawTriggerText);
+      const normalizeForCompare = (t: string) =>
+        String(t || '')
+          .replace(/@goose\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
+      const lastBaseNorm = normalizeForCompare(lastBaseText);
+      const triggerNorm = normalizeForCompare(rawTriggerText);
+      const shouldAppendNewUserMsg = !hasSupabaseContext || !(triggerNorm && lastBaseNorm && lastBaseNorm === triggerNorm);
 
-      const finalPromptText =
-        isVagueTrigger && questionToAnswer ? questionToAnswer : strippedTriggerText || rawTriggerText;
+      // No interpretation: the agent sees the full transcript and the *exact* user trigger line.
+      const finalPromptText = rawTriggerText;
 
       const finalUserMsg: Message = {
         ...newUserMsg,
@@ -1017,10 +985,8 @@ export function useChatStream({
         contextSource,
         agentContextCount: Array.isArray(agentContextMessages) ? agentContextMessages.length : 0,
         agentMessagesCount: agentMessages.length,
-        isVagueTrigger,
-        questionToAnswerPreview: questionToAnswer ? questionToAnswer.slice(0, 120) : '',
         finalPromptTextPreview: finalPromptText ? finalPromptText.slice(0, 120) : '',
-        replacedFinalPrompt: finalPromptText !== (strippedTriggerText || rawTriggerText),
+        replacedFinalPrompt: false,
         shouldAppendNewUserMsg,
         tail: contextTail,
       });
@@ -1031,7 +997,7 @@ export function useChatStream({
             .join('\n')
       );
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'ctx-pre',hypothesisId:'CTX',location:'useChatStream.ts:handleSubmit',message:'agent-context-snapshot',data:{gooseSessionId:String(sessionId).slice(0,12),contextSource,agentContextCount:Array.isArray(agentContextMessages)?agentContextMessages.length:0,agentMessagesCount:agentMessages.length,isVagueTrigger,questionToAnswerPreview:questionToAnswer?questionToAnswer.slice(0,120):'',finalPromptTextPreview:finalPromptText?finalPromptText.slice(0,120):'',replacedFinalPrompt:finalPromptText!==(strippedTriggerText||rawTriggerText),shouldAppendNewUserMsg,tail:contextTail},timestamp:Date.now()})}).catch(()=>{});
+      fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'ctx-pre',hypothesisId:'CTX',location:'useChatStream.ts:handleSubmit',message:'agent-context-snapshot',data:{gooseSessionId:String(sessionId).slice(0,12),contextSource,agentContextCount:Array.isArray(agentContextMessages)?agentContextMessages.length:0,agentMessagesCount:agentMessages.length,finalPromptTextPreview:finalPromptText?finalPromptText.slice(0,120):'',replacedFinalPrompt:false,shouldAppendNewUserMsg,tail:contextTail},timestamp:Date.now()})}).catch(()=>{});
       // #endregion agent log
 
       // If the last user message is empty, don't hit the agent.

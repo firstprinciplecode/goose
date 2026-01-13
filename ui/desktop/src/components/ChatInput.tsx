@@ -716,8 +716,12 @@ export default function ChatInput({
       // IMPORTANT: keep the @goose mention in the message we send into the stream layer.
       // The host stream runs in mention-only mode during collaboration and will skip AI
       // if @goose is not present.
-      const content = msg.content?.trim();
-      if (!content) continue;
+      const rawContent = msg.content?.trim();
+      if (!rawContent) continue;
+      // Some flows store `goose_trigger` messages in Supabase with the mention stripped
+      // (message_type carries the intent). Mention-only mode requires the token in the
+      // text passed to `useChatStream`, so reconstruct it here.
+      const content = /@goose\b/i.test(rawContent) ? rawContent : `@goose ${rawContent}`;
 
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'B',location:'ChatInput.tsx:hostGooseTrigger',message:'host-processing-goose-trigger',data:{msgId:String(msg.id).slice(0,12),fromUser:String(msg.user_id).slice(0,8),hostId:String(hostId).slice(0,8),contentHasGoose:/@goose\\b/i.test(content),contentLen:content.length,collabSessionId:collab.state.session?.id?String(collab.state.session.id).slice(0,12):null},timestamp:Date.now()})}).catch(()=>{});
