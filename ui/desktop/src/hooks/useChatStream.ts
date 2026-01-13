@@ -979,35 +979,6 @@ export function useChatStream({
         ? [collabInvocationInstruction, ...agentMessages]
         : agentMessages;
 
-      // If explicitly enabled, dump the *exact* payload text being sent to Goose.
-      // This is intentionally gated because it can be large and may contain sensitive content.
-      const dumpAgentPayload =
-        typeof window !== 'undefined' &&
-        (window as any)?.localStorage?.getItem('GOOSE_DEBUG_DUMP_AGENT_PAYLOAD') === '1';
-      if (dumpAgentPayload) {
-        const payload = {
-          sessionId,
-          contextSource,
-          // This is exactly what we send to /reply (minus auth headers).
-          messages: agentMessagesForSend,
-        };
-        try {
-          const json = JSON.stringify(payload, null, 2);
-          console.log('GOOSE_DEBUG_AGENT_PAYLOAD_JSON', json);
-          // Write to disk so users can inspect/copy exactly what Goose received.
-          // Use a stable path and overwrite each time to avoid unbounded growth.
-          const outPath = '.cursor/goose-agent-payload.json';
-          window.electron
-            ?.ensureDirectory?.('.cursor')
-            .catch(() => {})
-            .finally(() => {
-              window.electron?.writeFile?.(outPath, json).catch(() => {});
-            });
-        } catch (e) {
-          console.error('Failed to dump agent payload', e);
-        }
-      }
-
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {
         agentContextProvided: Array.isArray(agentContextMessages) ? agentContextMessages.length : 0,
@@ -1047,6 +1018,35 @@ export function useChatStream({
           id: (m as any)?.id ? String((m as any).id).slice(0, 12) : null,
           text: toTextPreview(m).slice(0, 120),
         }));
+
+      // If explicitly enabled, dump the *exact* payload text being sent to Goose.
+      // This is intentionally gated because it can be large and may contain sensitive content.
+      const dumpAgentPayload =
+        typeof window !== 'undefined' &&
+        (window as any)?.localStorage?.getItem('GOOSE_DEBUG_DUMP_AGENT_PAYLOAD') === '1';
+      if (dumpAgentPayload) {
+        const payload = {
+          sessionId,
+          contextSource,
+          // This is exactly what we send to /reply (minus auth headers).
+          messages: agentMessagesForSend,
+        };
+        try {
+          const json = JSON.stringify(payload, null, 2);
+          console.log('GOOSE_DEBUG_AGENT_PAYLOAD_JSON', json);
+          // Write to disk so users can inspect/copy exactly what Goose received.
+          // Use a stable path and overwrite each time to avoid unbounded growth.
+          const outPath = '.cursor/goose-agent-payload.json';
+          window.electron
+            ?.ensureDirectory?.('.cursor')
+            .catch(() => {})
+            .finally(() => {
+              window.electron?.writeFile?.(outPath, json).catch(() => {});
+            });
+        } catch (e) {
+          console.error('Failed to dump agent payload', e);
+        }
+      }
       // Make this extremely easy to find in DevTools (users can Cmd+F for AGENT_CONTEXT_SNAPSHOT).
       console.log('AGENT_CONTEXT_SNAPSHOT', {
         sessionId,
