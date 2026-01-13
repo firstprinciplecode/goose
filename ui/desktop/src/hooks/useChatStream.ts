@@ -896,9 +896,65 @@ export function useChatStream({
           ? baseForAgentRaw.slice(-MAX_AGENT_CONTEXT_MESSAGES)
           : baseForAgentRaw;
 
-      // When @goose is invoked, do NOT rewrite or augment the prompt.
-      // Send the full conversation (shared transcript if provided) plus the user's message.
-      const agentMessages = [...baseForAgent, newUserMsg];
+      // Build the agent payload.
+      // We always send the full transcript (Supabase collab history when available), and ensure the
+      // final user prompt is unambiguous for the agent.
+      const extractText = (m: Message): string => {
+        const text =
+          Array.isArray((m as any)?.content)
+            ? ((m as any).content as any[])
+                .filter((c) => c && c.type === 'text')
+                .map((c) => c.text || '')
+                .join('')
+            : '';
+        return String(text || '').replace(/\s+/g, ' ').trim();
+      };
+
+      const hasSupabaseContext =
+        Array.isArray(agentContextMessages) && agentContextMessages.length > 0;
+
+      const rawTriggerText = String(userMessage || '').trim();
+      const strippedTriggerText = rawTriggerText.replace(/@goose\b/gi, '').trim();
+
+      // If the trigger is vague ("what do you think", "help us here", "what is it"), answer the most
+      // recent explicit question in the transcript instead of prompting the model with anaphora ("it").
+      const isVagueTrigger = /\b(what do you think|help us here|what is it|what'?s that|what is this)\b/i.test(
+        strippedTriggerText
+      );
+
+      const questionToAnswer = (() => {
+        // Search backwards through the transcript (excluding the trigger itself).
+        for (let i = baseForAgent.length - 1; i >= 0; i--) {
+          const m = baseForAgent[i];
+          if (!m || (m as any).role !== 'user') continue;
+          const txt = extractText(m);
+          if (!txt) continue;
+          if (/@goose\b/i.test(txt)) continue;
+          if (/joined the conversation|left the conversation/i.test(txt)) continue;
+          if (!txt.includes('?')) continue;
+          return txt;
+        }
+        return '';
+      })();
+
+      // If Supabase already includes the goose_trigger line, don't add a duplicate local user message
+      // with the same text — it can bias the model toward the generic trigger and away from the question.
+      const lastBaseText = baseForAgent.length > 0 ? extractText(baseForAgent[baseForAgent.length - 1]) : '';
+      const shouldAppendNewUserMsg =
+        !hasSupabaseContext ||
+        (strippedTriggerText && lastBaseText && lastBaseText !== strippedTriggerText && lastBaseText !== rawTriggerText);
+
+      const finalPromptText =
+        isVagueTrigger && questionToAnswer ? questionToAnswer : strippedTriggerText || rawTriggerText;
+
+      const finalUserMsg: Message = {
+        ...newUserMsg,
+        content: [{ type: 'text', text: finalPromptText }],
+      };
+
+      const agentMessages = shouldAppendNewUserMsg
+        ? [...baseForAgent, finalUserMsg]
+        : [...baseForAgent.slice(0, -1), finalUserMsg];
 
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {
