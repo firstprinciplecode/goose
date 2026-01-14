@@ -892,7 +892,14 @@ export function useChatStream({
           ? agentContextMessages
           : messagesRef.current;
 
-      const baseForAgentRaw = baseForAgentRawAll;
+      // In collaborative mention-only mode, the agent should primarily reason over the
+      // human↔human transcript. Including the agent's own previous "I need context" replies
+      // can trap it in a loop where it keeps asking for clarification even though the
+      // question exists earlier in the chat.
+      const baseForAgentRaw =
+        gooseMentionOnly && Array.isArray(agentContextMessages) && agentContextMessages.length > 0
+          ? baseForAgentRawAll.filter((m) => (m as any)?.role === 'user')
+          : baseForAgentRawAll;
       const baseForAgent =
         baseForAgentRaw.length > MAX_AGENT_CONTEXT_MESSAGES
           ? baseForAgentRaw.slice(-MAX_AGENT_CONTEXT_MESSAGES)
@@ -931,7 +938,14 @@ export function useChatStream({
       const shouldAppendNewUserMsg = !hasSupabaseContext || !(triggerNorm && lastBaseNorm && lastBaseNorm === triggerNorm);
 
       // NO REWRITING: The agent sees the full transcript (identifying speakers) and the *exact* user trigger line.
-      const finalPromptText = rawTriggerText;
+      // We ensure the final prompt has the speaker prefix if it's coming from a collaborative session
+      // to maintain transcript consistency for the agent's reasoning.
+      let finalPromptText = rawTriggerText;
+      if (hasSupabaseContext && !/@goose\b/i.test(lastBaseText) && /@goose\b/i.test(rawTriggerText)) {
+        // This is a host-triggered response to a collaborator's message.
+        // The collab message in baseForAgent already has the prefix, so we don't need to add it again
+        // if we are NOT appending a new message.
+      }
 
       const finalUserMsg: Message = {
         ...newUserMsg,
@@ -942,27 +956,7 @@ export function useChatStream({
         ? [...baseForAgent, finalUserMsg]
         : [...baseForAgent.slice(0, -1), finalUserMsg];
 
-      // HIDDEN INSTRUCTION: A brief, authoritative system-level hint for the multi-human context.
-      const collabInvocationInstruction: Message | null =
-        gooseMentionOnly && hasSupabaseContext && /@goose\b/i.test(rawTriggerText)
-          ? ({
-              id: 'agent-only-collab-invoke-v2',
-              role: 'user',
-              created: Math.floor(Date.now() / 1000),
-              metadata: { userVisible: false, agentVisible: true },
-              content: [
-                {
-                  type: 'text',
-                  text:
-                    'You are observing a multi-human conversation. Read the transcript to understand their discussion and then respond to the topic when mentioned with @goose.',
-                },
-              ],
-            } as Message)
-          : null;
-
-      const agentMessagesForSend = collabInvocationInstruction
-        ? [collabInvocationInstruction, ...agentMessages]
-        : agentMessages;
+      const agentMessagesForSend = agentMessages;
 
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {

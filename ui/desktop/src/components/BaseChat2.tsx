@@ -271,15 +271,6 @@ function BaseChatContent({
 
   // Convert Supabase collaborative messages to the local Message format
   const convertCollabMessage = useCallback((msg: SessionHumanMessage): Message => {
-    console.log('🔄 Converting collab message:', {
-      id: msg.id,
-      type: msg.message_type,
-      content: msg.content?.slice(0, 50),
-      created_at: msg.created_at,
-      user_id: msg.user_id,
-      currentUserId: collab.state.currentUserId,
-    });
-    
     const isAssistant = msg.message_type === 'assistant';
     const isSystem = msg.message_type === 'system';
     const senderLabel = msg.user_display_name || msg.user_email || 'Collaborator';
@@ -294,11 +285,7 @@ function BaseChatContent({
     } else if (isSystem) {
       // System messages (like "X joined") get italic styling with info prefix
       displayContent = `*${msg.content}*`;
-    } else if (isFromSelf) {
-      // My own messages - show content as-is (will be labeled "You" by UserMessage)
-      displayContent = msg.content;
     } else {
-      // Messages from OTHER users - prefix with sender name for clarity
       displayContent = msg.content;
     }
     
@@ -306,35 +293,20 @@ function BaseChatContent({
     const createdAtMs = new Date(msg.created_at).getTime();
     const createdAtSeconds = Math.floor(createdAtMs / 1000);
     
-    const converted: Message = {
+    return {
       id: msg.id,
-      // System messages show as user role (will be styled differently via content)
       role: isAssistant ? 'assistant' : 'user',
       created: createdAtSeconds,
       content: [{
         type: 'text',
         text: displayContent,
       }],
-      // Set sender info for messages from OTHER users so UserMessage displays their name
       sender: (!isAssistant && !isFromSelf && !isSystem) ? {
         userId: msg.user_id,
         displayName: senderLabel,
         avatarUrl: undefined,
       } : undefined,
     };
-    
-    const firstContent = converted.content?.[0];
-    console.log('✅ Converted to:', {
-      id: converted.id,
-      role: converted.role,
-      created: converted.created,
-      isFromSelf,
-      hasSender: !!converted.sender,
-      senderName: converted.sender?.displayName,
-      contentLength: firstContent && 'text' in firstContent ? firstContent.text?.length : 0,
-    });
-    
-    return converted;
   }, [collab.state.currentUserId]);
 
   // (agentContextMessages is computed above, before useChatStream is called)
@@ -345,29 +317,15 @@ function BaseChatContent({
   const mergedMessages = useMemo(() => {
     // Check if we have active participants (more than just the host)
     const activeParticipants = collab.state.participants.filter(p => p.is_active);
-    const hasActiveGuest = activeParticipants.length > 1; // More than just the host
     
-    console.log('📊 MESSAGE SOURCE CHECK:', {
-      isCollaborative: collab.state.isCollaborative,
-      collabMessagesCount: collab.state.messages.length,
-      localMessagesCount: messages.length,
-      activeParticipants: activeParticipants.length,
-      hasActiveGuest,
-      isHost: collab.state.isHost,
-      sessionId,
-    });
-
     // SOLO MODE: Not in collaborative session, or no collab messages yet
     // Use local Goose messages
     if (!collab.state.isCollaborative || collab.state.messages.length === 0) {
-      console.log('📊 SOLO MODE: Using local Goose messages');
       return messages;
     }
 
     // COLLAB MODE: Use Supabase messages as the ONLY source of truth
     // This is like Teams channels - everyone sees the same messages from Supabase
-    console.log('📊 COLLAB MODE: Using Supabase messages as source of truth');
-    
     // Convert all collab messages to the Message format
     const collabConverted = collab.state.messages.map(convertCollabMessage);
     
@@ -378,14 +336,8 @@ function BaseChatContent({
       return aTime - bTime;
     });
 
-    console.log('📊 COLLAB MODE result:', {
-      totalMessages: collabConverted.length,
-      firstMessage: collabConverted[0]?.id,
-      lastMessage: collabConverted[collabConverted.length - 1]?.id,
-    });
-
     return collabConverted;
-  }, [messages, collab.state.isCollaborative, collab.state.messages, collab.state.participants, convertCollabMessage]);
+  }, [messages, collab.state.isCollaborative, collab.state.messages, convertCollabMessage]);
 
   // ==========================================================================
   // Collab transcript persistence (Option B):

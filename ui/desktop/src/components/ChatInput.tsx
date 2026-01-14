@@ -684,6 +684,10 @@ export default function ChatInput({
       } else {
         publishedAssistantKeysRef.current.add(fallbackPublishKey);
       }
+      
+      // Also ensure we don't publish the same ID again if the effect re-runs
+      // while sendAssistantMessage is in flight.
+      const dedupeId = lastMessage.id || fallbackPublishKey;
 
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/0a2a2409-8cfb-47ff-93e1-46a51d405d03',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'loop-pre',hypothesisId:'A',location:'ChatInput.tsx:publishEffect',message:'publishing-assistant-to-supabase',data:{lastId:lastMessage?.id?String(lastMessage.id).slice(0,12):null,textLen:textContent.length,collabSessionId:collab.state.session?.id?String(collab.state.session.id).slice(0,12):null},timestamp:Date.now()})}).catch(()=>{});
