@@ -981,7 +981,7 @@ export function useChatStream({
                 {
                   type: 'text',
                   text:
-                    'You are participating in a multi-human chat. When you are invoked with @goose, read the full conversation between them and respond. Do not ask for clarification if there is a clear preceding question or debate; only ask a clarifying question if there is genuinely no prior topic/question to answer.',
+                    '[SYSTEM INSTRUCTION] You are observing a conversation between multiple humans. They have invoked you with @goose asking for your input. Your role is to read their full conversation above and provide a direct, substantive answer to their question or debate. The conversation context is complete—do NOT ask them to clarify, paste more information, or explain "what this refers to." If they are debating a factual question (like "what does X stand for"), provide the correct answer with a brief explanation. Be helpful and direct, not cautious or meta.',
                 },
               ],
             } as Message)
