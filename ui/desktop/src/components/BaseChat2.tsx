@@ -129,12 +129,22 @@ function BaseChatContent({
   // it's only used as prompt context, not for display.
   const agentContextMessages = useMemo(() => {
     if (!collab.state.isCollaborative) return undefined;
-    const converted: Message[] = collab.state.messages.map((m) => ({
-      id: m.id,
-      role: m.message_type === 'assistant' ? 'assistant' : 'user',
-      created: Math.floor(new Date(m.created_at).getTime() / 1000),
-      content: [{ type: 'text', text: m.content }],
-    }));
+    const converted: Message[] = collab.state.messages.map((m) => {
+      const isAssistant = m.message_type === 'assistant';
+      const isSystem = m.message_type === 'system';
+      
+      // Prefix human messages with their name so the agent knows who is speaking
+      const speakerPrefix = !isAssistant && !isSystem 
+        ? `${m.user_display_name || m.user_email || 'User'}: ` 
+        : '';
+
+      return {
+        id: m.id,
+        role: isAssistant ? 'assistant' : 'user',
+        created: Math.floor(new Date(m.created_at).getTime() / 1000),
+        content: [{ type: 'text', text: `${speakerPrefix}${m.content}` }],
+      };
+    });
     converted.sort((a, b) => {
       const aTime = typeof a.created === 'number' ? a.created : 0;
       const bTime = typeof b.created === 'number' ? b.created : 0;

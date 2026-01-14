@@ -892,26 +892,7 @@ export function useChatStream({
           ? agentContextMessages
           : messagesRef.current;
 
-      // In collaborative mention-only mode, the agent should primarily reason over the
-      // human↔human transcript. Including the agent's own previous "I need context" replies
-      // can trap it in a loop where it keeps asking for clarification even though the
-      // question exists earlier in the chat.
-      const shouldFilterAssistant =
-        gooseMentionOnly && Array.isArray(agentContextMessages) && agentContextMessages.length > 0;
-      console.log('🔍 Agent message filtering:', {
-        gooseMentionOnly,
-        hasAgentContext: Array.isArray(agentContextMessages) && agentContextMessages.length > 0,
-        shouldFilterAssistant,
-        totalMessages: baseForAgentRawAll.length,
-        assistantCount: baseForAgentRawAll.filter((m) => (m as any)?.role === 'assistant').length,
-      });
-      const baseForAgentRaw = shouldFilterAssistant
-        ? baseForAgentRawAll.filter((m) => (m as any)?.role === 'user')
-        : baseForAgentRawAll;
-      console.log('✅ After filtering:', {
-        filteredCount: baseForAgentRaw.length,
-        assistantRemaining: baseForAgentRaw.filter((m) => (m as any)?.role === 'assistant').length,
-      });
+      const baseForAgentRaw = baseForAgentRawAll;
       const baseForAgent =
         baseForAgentRaw.length > MAX_AGENT_CONTEXT_MESSAGES
           ? baseForAgentRaw.slice(-MAX_AGENT_CONTEXT_MESSAGES)
@@ -949,32 +930,8 @@ export function useChatStream({
       const triggerNorm = normalizeForCompare(rawTriggerText);
       const shouldAppendNewUserMsg = !hasSupabaseContext || !(triggerNorm && lastBaseNorm && lastBaseNorm === triggerNorm);
 
-      // In collaborative mode with a vague @goose trigger, extract the actual question
-      // from the prior conversation and make it explicit in the final prompt.
-      let finalPromptText = rawTriggerText;
-      
-      if (gooseMentionOnly && hasSupabaseContext && /@goose\b/i.test(rawTriggerText)) {
-        // Look for the most recent substantive question in the conversation
-        const recentUserMessages = baseForAgent
-          .filter((m) => (m as any)?.role === 'user')
-          .slice(-5); // Last 5 user messages
-        
-        // Find questions that look substantive (contain question words or question mark)
-        const questionPattern = /\b(what|who|where|when|why|how|which|can|could|should|would|is|are|does|do)\b.*\?/i;
-        const substantiveQuestions = recentUserMessages
-          .map((m) => extractText(m))
-          .filter((text) => questionPattern.test(text));
-        
-        if (substantiveQuestions.length > 0) {
-          const lastQuestion = substantiveQuestions[substantiveQuestions.length - 1];
-          // Rewrite the trigger to be explicit
-          finalPromptText = `Based on the conversation above, please answer this question: ${lastQuestion}`;
-          console.log('🎯 Rewrote vague trigger to explicit question:', { 
-            original: rawTriggerText.slice(0, 50),
-            rewritten: finalPromptText.slice(0, 100)
-          });
-        }
-      }
+      // NO REWRITING: The agent sees the full transcript (identifying speakers) and the *exact* user trigger line.
+      const finalPromptText = rawTriggerText;
 
       const finalUserMsg: Message = {
         ...newUserMsg,
@@ -985,7 +942,27 @@ export function useChatStream({
         ? [...baseForAgent, finalUserMsg]
         : [...baseForAgent.slice(0, -1), finalUserMsg];
 
-      const agentMessagesForSend = agentMessages;
+      // HIDDEN INSTRUCTION: A brief, authoritative system-level hint for the multi-human context.
+      const collabInvocationInstruction: Message | null =
+        gooseMentionOnly && hasSupabaseContext && /@goose\b/i.test(rawTriggerText)
+          ? ({
+              id: 'agent-only-collab-invoke-v2',
+              role: 'user',
+              created: Math.floor(Date.now() / 1000),
+              metadata: { userVisible: false, agentVisible: true },
+              content: [
+                {
+                  type: 'text',
+                  text:
+                    'You are observing a multi-human conversation. Read the transcript to understand their discussion and then respond to the topic when mentioned with @goose.',
+                },
+              ],
+            } as Message)
+          : null;
+
+      const agentMessagesForSend = collabInvocationInstruction
+        ? [collabInvocationInstruction, ...agentMessages]
+        : agentMessages;
 
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {
