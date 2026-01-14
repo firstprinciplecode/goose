@@ -901,54 +901,40 @@ export function useChatStream({
           : baseForAgentRaw;
 
       // Build the agent payload.
-      // We always send the full transcript (Supabase collab history when available), and ensure the
-      // final user prompt is unambiguous for the agent.
-      const extractText = (m: Message): string => {
-        const text =
-          Array.isArray((m as any)?.content)
-            ? ((m as any).content as any[])
-                .filter((c) => c && c.type === 'text')
-                .map((c) => c.text || '')
-                .join('')
-            : '';
-        return String(text || '').replace(/\s+/g, ' ').trim();
-      };
-
-      const hasSupabaseContext =
-        Array.isArray(agentContextMessages) && agentContextMessages.length > 0;
-
-      const rawTriggerText = String(userMessage || '').trim();
-
-      // If Supabase already includes the goose_trigger line, don't add a duplicate local user message
-      // with the same text — it can bias the model toward the generic trigger and away from the question.
-      const lastBaseText = baseForAgent.length > 0 ? extractText(baseForAgent[baseForAgent.length - 1]) : '';
-      const normalizeForCompare = (t: string) =>
-        String(t || '')
-          .replace(/@goose\b/gi, '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .toLowerCase();
-      const lastBaseNorm = normalizeForCompare(lastBaseText);
       const triggerNorm = normalizeForCompare(rawTriggerText);
-      
-      // Smarter duplicate check: if the trigger text is already the last message in the transcript
-      // (accounting for speaker prefixes like "User: ..."), don't append it again.
+      const lastBaseText = baseForAgent.length > 0 ? extractText(baseForAgent[baseForAgent.length - 1]) : '';
+      const lastBaseNorm = normalizeForCompare(lastBaseText);
+
+      // If the transcript already has this message (e.g. from a collaborator),
+      // we DON'T append a new one. This keeps the speaker prefix (e.g. "User: ...") intact.
       const shouldAppendNewUserMsg = !hasSupabaseContext || 
         !(triggerNorm && lastBaseNorm && (lastBaseNorm === triggerNorm || lastBaseNorm.endsWith(`: ${triggerNorm}`)));
 
-      // NO REWRITING: The agent sees the full transcript (identifying speakers) and the *exact* user trigger line.
-      const finalPromptText = rawTriggerText;
-
       const finalUserMsg: Message = {
         ...newUserMsg,
-        content: [{ type: 'text', text: finalPromptText }],
+        content: [{ type: 'text', text: rawTriggerText }],
       };
 
       const agentMessages = shouldAppendNewUserMsg
         ? [...baseForAgent, finalUserMsg]
-        : [...baseForAgent.slice(0, -1), finalUserMsg];
+        : baseForAgent; // Keep the transcript version which has the speaker name
 
-      const agentMessagesForSend = agentMessages;
+      // COLLAB HINT: Tell the agent to be a direct participant and answer general questions.
+      // This overcomes the strict "developer agent" system prompt for multi-user chats.
+      const collabHint: Message | null = (hasSupabaseContext && /@goose\b/i.test(rawTriggerText))
+        ? {
+            id: 'collab-hint',
+            role: 'user',
+            created: Math.floor(Date.now() / 1000),
+            metadata: { userVisible: false, agentVisible: true },
+            content: [{
+              type: 'text',
+              text: 'You are in a multi-human chat. If they are debating a factual question or asking for your opinion on their discussion, answer them directly. Do not force them to provide "coding goals" or "repo paths" if they are just having a conversation.'
+            }]
+          } as Message
+        : null;
+
+      const agentMessagesForSend = collabHint ? [collabHint, ...agentMessages] : agentMessages;
 
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {
