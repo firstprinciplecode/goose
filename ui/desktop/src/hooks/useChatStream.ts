@@ -925,7 +925,7 @@ export function useChatStream({
         Array.isArray(agentContextMessages) && agentContextMessages.length > 0;
 
       const rawTriggerText = String(userMessage || '').trim();
-      const finalPromptText = rawTriggerText;
+      let finalPromptText = rawTriggerText;
 
       const triggerNorm = normalizeForCompare(rawTriggerText);
       const lastBaseText = baseForAgent.length > 0 ? extractText(baseForAgent[baseForAgent.length - 1]) : '';
@@ -945,60 +945,48 @@ export function useChatStream({
         ? [...baseForAgent, finalUserMsg]
         : baseForAgent; // Keep the transcript version which has the speaker name
 
-      // Collaborative sessions: models sometimes default to a generic “what do you need help with?”
-      // even when the transcript clearly contains a debate/question. To make this robust, we add a
-      // hidden, agent-visible “debate anchor” that explicitly points at the question + competing answers
-      // already present in the transcript. This does NOT change what users see.
+      // Collaborative @goose: collapse the transcript into a *single* prompt message.
+      // This matches the user's “copy/paste the conversation into one message” behavior, and avoids
+      // any risk that the model attends only to the last turn in a multi-message payload.
       const isCollabGooseInvoke = hasSupabaseContext && /@goose\b/i.test(rawTriggerText);
-      const debateAnchor: Message | null = (() => {
-        if (!isCollabGooseInvoke) return null;
+      const agentMessagesForSend = (() => {
+        if (!isCollabGooseInvoke) return agentMessages;
 
-        const texts = agentMessages.map(extractText).filter(Boolean);
-        // Find the last @goose line in the transcript (usually the trigger).
-        const triggerIdx = (() => {
-          for (let i = texts.length - 1; i >= 0; i--) {
-            if (/@goose\b/i.test(texts[i])) return i;
-          }
-          return -1;
-        })();
-        if (triggerIdx <= 0) return null;
+        // Prefer human-only transcript so prior assistant “intake” replies can’t anchor the model.
+        const transcriptMsgs = agentMessages.filter((m) => (m as any)?.role === 'user');
+        const transcriptLines = transcriptMsgs
+          .map(extractText)
+          .filter(Boolean);
 
-        // Find the most recent “real question” before the trigger.
-        const questionIdx = (() => {
-          for (let i = triggerIdx - 1; i >= 0; i--) {
-            const t = texts[i];
-            if (!t) continue;
-            if (/@goose\b/i.test(t)) continue;
-            if (/\?/.test(t)) return i;
-          }
-          return -1;
-        })();
-        if (questionIdx === -1) return null;
+        // Cap size for safety (token/latency). Keep the *tail* which is most relevant.
+        const MAX_TRANSCRIPT_LINES = 120;
+        const MAX_TRANSCRIPT_CHARS = 12000;
+        const tailLines =
+          transcriptLines.length > MAX_TRANSCRIPT_LINES
+            ? transcriptLines.slice(-MAX_TRANSCRIPT_LINES)
+            : transcriptLines;
+        let transcriptText = tailLines.join('\n');
+        if (transcriptText.length > MAX_TRANSCRIPT_CHARS) {
+          transcriptText = transcriptText.slice(-MAX_TRANSCRIPT_CHARS);
+          const nl = transcriptText.indexOf('\n');
+          if (nl > 0) transcriptText = transcriptText.slice(nl + 1);
+        }
 
-        const questionText = texts[questionIdx];
-        const candidates = texts
-          .slice(questionIdx + 1, triggerIdx)
-          .filter((t) => t && !/@goose\b/i.test(t))
-          .slice(-3);
+        finalPromptText =
+          `Conversation so far (chronological):\n` +
+          `${transcriptText}\n\n` +
+          `---\n` +
+          `@goose was invoked with:\n` +
+          `${rawTriggerText}\n\n` +
+          `Task: Respond directly to the conversation above. If they are debating a factual question, give the correct answer and briefly explain why.`;
 
-        const anchorText =
-          `You are being invoked in a multi-human chat to weigh in on their ongoing discussion.\n\n` +
-          `Question being discussed:\n- ${questionText}\n\n` +
-          (candidates.length > 0
-            ? `Competing suggestions mentioned:\n${candidates.map((c) => `- ${c}`).join('\n')}\n\n`
-            : '') +
-          `Respond directly with the correct answer and a brief explanation.`;
+        const collapsedMsg: Message = {
+          ...finalUserMsg,
+          content: [{ type: 'text', text: finalPromptText }],
+        };
 
-        return {
-          id: 'agent-only-collab-debate-anchor-v1',
-          role: 'user',
-          created: Math.floor(Date.now() / 1000),
-          metadata: { userVisible: false, agentVisible: true },
-          content: [{ type: 'text', text: anchorText }],
-        } as Message;
+        return [collapsedMsg];
       })();
-
-      const agentMessagesForSend = debateAnchor ? [debateAnchor, ...agentMessages] : agentMessages;
 
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {
