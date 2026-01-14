@@ -914,10 +914,18 @@ export function useChatStream({
         return String(text || '').replace(/\s+/g, ' ').trim();
       };
 
+      const normalizeForCompare = (t: string) =>
+        String(t || '')
+          .replace(/@goose\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
+
       const hasSupabaseContext =
         Array.isArray(agentContextMessages) && agentContextMessages.length > 0;
 
       const rawTriggerText = String(userMessage || '').trim();
+      const finalPromptText = rawTriggerText;
 
       const triggerNorm = normalizeForCompare(rawTriggerText);
       const lastBaseText = baseForAgent.length > 0 ? extractText(baseForAgent[baseForAgent.length - 1]) : '';
@@ -930,29 +938,67 @@ export function useChatStream({
 
       const finalUserMsg: Message = {
         ...newUserMsg,
-        content: [{ type: 'text', text: rawTriggerText }],
+        content: [{ type: 'text', text: finalPromptText }],
       };
 
       const agentMessages = shouldAppendNewUserMsg
         ? [...baseForAgent, finalUserMsg]
         : baseForAgent; // Keep the transcript version which has the speaker name
 
-      // COLLAB HINT: Tell the agent to be a direct participant and answer general questions.
-      // This overcomes the strict "developer agent" system prompt for multi-user chats.
-      const collabHint: Message | null = (hasSupabaseContext && /@goose\b/i.test(rawTriggerText))
-        ? {
-            id: 'collab-hint',
-            role: 'user',
-            created: Math.floor(Date.now() / 1000),
-            metadata: { userVisible: false, agentVisible: true },
-            content: [{
-              type: 'text',
-              text: 'You are in a multi-human chat. If they are debating a factual question or asking for your opinion on their discussion, answer them directly. Do not force them to provide "coding goals" or "repo paths" if they are just having a conversation.'
-            }]
-          } as Message
-        : null;
+      // Collaborative sessions: models sometimes default to a generic “what do you need help with?”
+      // even when the transcript clearly contains a debate/question. To make this robust, we add a
+      // hidden, agent-visible “debate anchor” that explicitly points at the question + competing answers
+      // already present in the transcript. This does NOT change what users see.
+      const isCollabGooseInvoke = hasSupabaseContext && /@goose\b/i.test(rawTriggerText);
+      const debateAnchor: Message | null = (() => {
+        if (!isCollabGooseInvoke) return null;
 
-      const agentMessagesForSend = collabHint ? [collabHint, ...agentMessages] : agentMessages;
+        const texts = agentMessages.map(extractText).filter(Boolean);
+        // Find the last @goose line in the transcript (usually the trigger).
+        const triggerIdx = (() => {
+          for (let i = texts.length - 1; i >= 0; i--) {
+            if (/@goose\b/i.test(texts[i])) return i;
+          }
+          return -1;
+        })();
+        if (triggerIdx <= 0) return null;
+
+        // Find the most recent “real question” before the trigger.
+        const questionIdx = (() => {
+          for (let i = triggerIdx - 1; i >= 0; i--) {
+            const t = texts[i];
+            if (!t) continue;
+            if (/@goose\b/i.test(t)) continue;
+            if (/\?/.test(t)) return i;
+          }
+          return -1;
+        })();
+        if (questionIdx === -1) return null;
+
+        const questionText = texts[questionIdx];
+        const candidates = texts
+          .slice(questionIdx + 1, triggerIdx)
+          .filter((t) => t && !/@goose\b/i.test(t))
+          .slice(-3);
+
+        const anchorText =
+          `You are being invoked in a multi-human chat to weigh in on their ongoing discussion.\n\n` +
+          `Question being discussed:\n- ${questionText}\n\n` +
+          (candidates.length > 0
+            ? `Competing suggestions mentioned:\n${candidates.map((c) => `- ${c}`).join('\n')}\n\n`
+            : '') +
+          `Respond directly with the correct answer and a brief explanation.`;
+
+        return {
+          id: 'agent-only-collab-debate-anchor-v1',
+          role: 'user',
+          created: Math.floor(Date.now() / 1000),
+          metadata: { userVisible: false, agentVisible: true },
+          content: [{ type: 'text', text: anchorText }],
+        } as Message;
+      })();
+
+      const agentMessagesForSend = debateAnchor ? [debateAnchor, ...agentMessages] : agentMessages;
 
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {
