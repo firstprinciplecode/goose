@@ -13,6 +13,7 @@ import {
   getCompactingMessage, 
   getThinkingMessage 
 } from '../types/message';
+import { buildCollabGoosePrompt, type CollabPromptMode } from '../utils/collabGoosePrompt';
 
 // Local type definitions for SSE events
 interface TokenState {
@@ -945,48 +946,22 @@ export function useChatStream({
         ? [...baseForAgent, finalUserMsg]
         : baseForAgent; // Keep the transcript version which has the speaker name
 
-      // Collaborative @goose: collapse the transcript into a *single* prompt message.
-      // This matches the user's “copy/paste the conversation into one message” behavior, and avoids
-      // any risk that the model attends only to the last turn in a multi-message payload.
       const isCollabGooseInvoke = hasSupabaseContext && /@goose\b/i.test(rawTriggerText);
-      const agentMessagesForSend = (() => {
-        if (!isCollabGooseInvoke) return agentMessages;
+      const collabPromptMode = ((
+        typeof window !== 'undefined' &&
+        (window as any)?.localStorage?.getItem('GOOSE_COLLAB_PROMPT_MODE')
+      ) || 'collapsed_human_only') as CollabPromptMode;
 
-        // Prefer human-only transcript so prior assistant “intake” replies can’t anchor the model.
-        const transcriptMsgs = agentMessages.filter((m) => (m as any)?.role === 'user');
-        const transcriptLines = transcriptMsgs
-          .map(extractText)
-          .filter(Boolean);
+      const built = buildCollabGoosePrompt({
+        hasSupabaseContext,
+        rawTriggerText,
+        agentMessages,
+        finalUserMsg,
+        mode: collabPromptMode,
+      });
 
-        // Cap size for safety (token/latency). Keep the *tail* which is most relevant.
-        const MAX_TRANSCRIPT_LINES = 120;
-        const MAX_TRANSCRIPT_CHARS = 12000;
-        const tailLines =
-          transcriptLines.length > MAX_TRANSCRIPT_LINES
-            ? transcriptLines.slice(-MAX_TRANSCRIPT_LINES)
-            : transcriptLines;
-        let transcriptText = tailLines.join('\n');
-        if (transcriptText.length > MAX_TRANSCRIPT_CHARS) {
-          transcriptText = transcriptText.slice(-MAX_TRANSCRIPT_CHARS);
-          const nl = transcriptText.indexOf('\n');
-          if (nl > 0) transcriptText = transcriptText.slice(nl + 1);
-        }
-
-        finalPromptText =
-          `Conversation so far (chronological):\n` +
-          `${transcriptText}\n\n` +
-          `---\n` +
-          `@goose was invoked with:\n` +
-          `${rawTriggerText}\n\n` +
-          `Task: Respond directly to the conversation above. If they are debating a factual question, give the correct answer and briefly explain why.`;
-
-        const collapsedMsg: Message = {
-          ...finalUserMsg,
-          content: [{ type: 'text', text: finalPromptText }],
-        };
-
-        return [collapsedMsg];
-      })();
+      finalPromptText = built.collapsedPromptText ?? finalPromptText;
+      const agentMessagesForSend = built.messagesForSend;
 
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {
@@ -1037,6 +1012,7 @@ export function useChatStream({
         const payload = {
           sessionId,
           contextSource,
+          collabPromptMode: isCollabGooseInvoke ? built.mode : null,
           // This is exactly what we send to /reply (minus auth headers).
           messages: agentMessagesForSend,
         };
