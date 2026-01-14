@@ -949,8 +949,32 @@ export function useChatStream({
       const triggerNorm = normalizeForCompare(rawTriggerText);
       const shouldAppendNewUserMsg = !hasSupabaseContext || !(triggerNorm && lastBaseNorm && lastBaseNorm === triggerNorm);
 
-      // No interpretation: the agent sees the full transcript and the *exact* user trigger line.
-      const finalPromptText = rawTriggerText;
+      // In collaborative mode with a vague @goose trigger, extract the actual question
+      // from the prior conversation and make it explicit in the final prompt.
+      let finalPromptText = rawTriggerText;
+      
+      if (gooseMentionOnly && hasSupabaseContext && /@goose\b/i.test(rawTriggerText)) {
+        // Look for the most recent substantive question in the conversation
+        const recentUserMessages = baseForAgent
+          .filter((m) => (m as any)?.role === 'user')
+          .slice(-5); // Last 5 user messages
+        
+        // Find questions that look substantive (contain question words or question mark)
+        const questionPattern = /\b(what|who|where|when|why|how|which|can|could|should|would|is|are|does|do)\b.*\?/i;
+        const substantiveQuestions = recentUserMessages
+          .map((m) => extractText(m))
+          .filter((text) => questionPattern.test(text));
+        
+        if (substantiveQuestions.length > 0) {
+          const lastQuestion = substantiveQuestions[substantiveQuestions.length - 1];
+          // Rewrite the trigger to be explicit
+          finalPromptText = `Based on the conversation above, please answer this question: ${lastQuestion}`;
+          console.log('🎯 Rewrote vague trigger to explicit question:', { 
+            original: rawTriggerText.slice(0, 50),
+            rewritten: finalPromptText.slice(0, 100)
+          });
+        }
+      }
 
       const finalUserMsg: Message = {
         ...newUserMsg,
@@ -961,35 +985,7 @@ export function useChatStream({
         ? [...baseForAgent, finalUserMsg]
         : [...baseForAgent.slice(0, -1), finalUserMsg];
 
-      // Collaborative sessions: we do NOT rewrite the conversation or the trigger message.
-      // However, models can still default to “ask clarifying questions” when the trigger is meta
-      // ("what's the answer", "help us here"). Provide a hidden, agent-only instruction so Goose
-      // behaves like a participant in the ongoing conversation and answers the current debate.
-      //
-      // This message is NOT user-visible, but IS agent-visible.
-      const collabInvocationInstruction: Message | null =
-        gooseMentionOnly && hasSupabaseContext && /@goose\b/i.test(rawTriggerText)
-          ? ({
-              id: 'agent-only-collab-invoke-v1',
-              // Use user role so this instruction is treated as authoritative guidance,
-              // but keep it hidden from the UI.
-              role: 'user',
-              created: Math.floor(Date.now() / 1000),
-              // Server-side MessageMetadata is camelCase (userVisible/agentVisible).
-              metadata: { userVisible: false, agentVisible: true },
-              content: [
-                {
-                  type: 'text',
-                  text:
-                    '[SYSTEM INSTRUCTION] You are observing a conversation between multiple humans. They have invoked you with @goose asking for your input. Your role is to read their full conversation above and provide a direct, substantive answer to their question or debate. The conversation context is complete—do NOT ask them to clarify, paste more information, or explain "what this refers to." If they are debating a factual question (like "what does X stand for"), provide the correct answer with a brief explanation. Be helpful and direct, not cautious or meta.',
-                },
-              ],
-            } as Message)
-          : null;
-
-      const agentMessagesForSend = collabInvocationInstruction
-        ? [collabInvocationInstruction, ...agentMessages]
-        : agentMessages;
+      const agentMessagesForSend = agentMessages;
 
       // Debug: ensure we are sending full shared context (especially important for collab host triggers).
       log.stream('reply-payload', {
