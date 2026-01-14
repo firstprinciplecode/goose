@@ -901,6 +901,24 @@ export function useChatStream({
           : baseForAgentRaw;
 
       // Build the agent payload.
+      // We always send the full transcript (Supabase collab history when available), and ensure the
+      // final user prompt is unambiguous for the agent.
+      const extractText = (m: Message): string => {
+        const text =
+          Array.isArray((m as any)?.content)
+            ? ((m as any).content as any[])
+                .filter((c) => c && c.type === 'text')
+                .map((c) => c.text || '')
+                .join('')
+            : '';
+        return String(text || '').replace(/\s+/g, ' ').trim();
+      };
+
+      const hasSupabaseContext =
+        Array.isArray(agentContextMessages) && agentContextMessages.length > 0;
+
+      const rawTriggerText = String(userMessage || '').trim();
+
       const triggerNorm = normalizeForCompare(rawTriggerText);
       const lastBaseText = baseForAgent.length > 0 ? extractText(baseForAgent[baseForAgent.length - 1]) : '';
       const lastBaseNorm = normalizeForCompare(lastBaseText);
