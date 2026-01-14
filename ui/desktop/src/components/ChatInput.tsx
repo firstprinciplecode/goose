@@ -569,6 +569,7 @@ export default function ChatInput({
 
   // Tab context (sidecar features, doc/web viewers, etc.)
   const tabContext = useTabContext();
+  const isActiveTab = !tabId || tabContext.activeTabId === tabId;
 
   // Supabase-backed collaborative agent session state for this Goose session
   const collab: UseCollaborativeAgentSessionReturn =
@@ -632,6 +633,7 @@ export default function ChatInput({
   // Publish host AI responses to Supabase so collaborators on other machines can see them.
   useEffect(() => {
     if (!messages || !Array.isArray(messages) || messages.length === 0) return;
+    if (!isActiveTab) return;
 
     const lastMessage = messages[messages.length - 1];
     // #region agent log
@@ -702,11 +704,12 @@ export default function ChatInput({
         console.error('[CollabSession] Failed to publish assistant message:', e);
       });
     }
-  }, [messages, chatState, collab.state.isCollaborative, collab.state.isHost, collab.actions]);
+  }, [messages, chatState, collab.state.isCollaborative, collab.state.isHost, collab.actions, isActiveTab]);
 
   // Host: whenever a collaborator sends a @goose-trigger message, run the agent locally.
   useEffect(() => {
     if (!collab.state.isCollaborative || !collab.state.isHost) return;
+    if (!isActiveTab) return;
     const hostId = supabaseSession?.user?.id;
     if (!hostId) return;
 
@@ -742,6 +745,7 @@ export default function ChatInput({
     collab.actions,
     supabaseSession?.user?.id,
     handleSubmit,
+    isActiveTab,
   ]);
 
 
