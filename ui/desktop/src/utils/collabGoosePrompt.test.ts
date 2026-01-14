@@ -58,5 +58,14 @@ describe('buildCollabGoosePrompt', () => {
     expect(text).toContain('Liquid Language Model');
     expect(text).not.toContain('what can I help with?');
   });
+
+  it('collapsed_human_only_raw contains only transcript + trigger (no Task framing)', () => {
+    const out = run('collapsed_human_only_raw');
+    const text = (out.messagesForSend[0] as any).content?.[0]?.text as string;
+    expect(text).toContain('Liquid Language Model');
+    expect(text).toContain('@goose can you help here?');
+    expect(text).not.toContain('Task: Respond directly');
+    expect(text).not.toContain('Conversation so far');
+  });
 });
 

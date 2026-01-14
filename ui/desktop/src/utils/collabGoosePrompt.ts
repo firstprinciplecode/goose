@@ -4,7 +4,9 @@ export type CollabPromptMode =
   | 'messages'
   | 'messages_human_only'
   | 'collapsed'
-  | 'collapsed_human_only';
+  | 'collapsed_human_only'
+  | 'collapsed_raw'
+  | 'collapsed_human_only_raw';
 
 export type BuildCollabGoosePromptResult = {
   mode: CollabPromptMode;
@@ -67,6 +69,7 @@ export function buildCollabGoosePrompt(args: {
   }
 
   // collapsed*
+  const rawCollapsed = mode.endsWith('_raw');
   const transcriptLines = transcriptMsgs.map(extractText).filter(Boolean);
   const tailLines =
     transcriptLines.length > maxTranscriptLines
@@ -79,13 +82,14 @@ export function buildCollabGoosePrompt(args: {
     if (nl > 0) transcriptText = transcriptText.slice(nl + 1);
   }
 
-  const collapsedPromptText =
-    `Conversation so far (chronological):\n` +
-    `${transcriptText}\n\n` +
-    `---\n` +
-    `@goose was invoked with:\n` +
-    `${rawTriggerText}\n\n` +
-    `Task: Respond directly to the conversation above. If they are debating a factual question, give the correct answer and briefly explain why.`;
+  const collapsedPromptText = rawCollapsed
+    ? `${transcriptText}\n\n${rawTriggerText}\n`
+    : `Conversation so far (chronological):\n` +
+      `${transcriptText}\n\n` +
+      `---\n` +
+      `@goose was invoked with:\n` +
+      `${rawTriggerText}\n\n` +
+      `Task: Respond directly to the conversation above. If they are debating a factual question, give the correct answer and briefly explain why.`;
 
   const collapsedMsg: Message = {
     ...finalUserMsg,
