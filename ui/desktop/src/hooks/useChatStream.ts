@@ -892,14 +892,9 @@ export function useChatStream({
           ? agentContextMessages
           : messagesRef.current;
 
-      // In collaborative mention-only mode, the agent should primarily reason over the
-      // human↔human transcript. Including the agent's own previous "I need context" replies
-      // can trap it in a loop where it keeps asking for clarification even though the
-      // question exists earlier in the chat.
-      const baseForAgentRaw =
-        gooseMentionOnly && Array.isArray(agentContextMessages) && agentContextMessages.length > 0
-          ? baseForAgentRawAll.filter((m) => (m as any)?.role === 'user')
-          : baseForAgentRawAll;
+      // In collaborative mode, the agent should see the full human↔human transcript 
+      // plus its own previous responses to maintain context. 
+      const baseForAgentRaw = baseForAgentRawAll;
       const baseForAgent =
         baseForAgentRaw.length > MAX_AGENT_CONTEXT_MESSAGES
           ? baseForAgentRaw.slice(-MAX_AGENT_CONTEXT_MESSAGES)
@@ -935,17 +930,14 @@ export function useChatStream({
           .toLowerCase();
       const lastBaseNorm = normalizeForCompare(lastBaseText);
       const triggerNorm = normalizeForCompare(rawTriggerText);
-      const shouldAppendNewUserMsg = !hasSupabaseContext || !(triggerNorm && lastBaseNorm && lastBaseNorm === triggerNorm);
+      
+      // Smarter duplicate check: if the trigger text is already the last message in the transcript
+      // (accounting for speaker prefixes like "User: ..."), don't append it again.
+      const shouldAppendNewUserMsg = !hasSupabaseContext || 
+        !(triggerNorm && lastBaseNorm && (lastBaseNorm === triggerNorm || lastBaseNorm.endsWith(`: ${triggerNorm}`)));
 
       // NO REWRITING: The agent sees the full transcript (identifying speakers) and the *exact* user trigger line.
-      // We ensure the final prompt has the speaker prefix if it's coming from a collaborative session
-      // to maintain transcript consistency for the agent's reasoning.
-      let finalPromptText = rawTriggerText;
-      if (hasSupabaseContext && !/@goose\b/i.test(lastBaseText) && /@goose\b/i.test(rawTriggerText)) {
-        // This is a host-triggered response to a collaborator's message.
-        // The collab message in baseForAgent already has the prefix, so we don't need to add it again
-        // if we are NOT appending a new message.
-      }
+      const finalPromptText = rawTriggerText;
 
       const finalUserMsg: Message = {
         ...newUserMsg,
