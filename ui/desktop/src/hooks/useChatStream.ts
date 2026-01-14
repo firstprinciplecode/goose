@@ -896,10 +896,22 @@ export function useChatStream({
       // human↔human transcript. Including the agent's own previous "I need context" replies
       // can trap it in a loop where it keeps asking for clarification even though the
       // question exists earlier in the chat.
-      const baseForAgentRaw =
-        gooseMentionOnly && Array.isArray(agentContextMessages) && agentContextMessages.length > 0
-          ? baseForAgentRawAll.filter((m) => (m as any)?.role === 'user')
-          : baseForAgentRawAll;
+      const shouldFilterAssistant =
+        gooseMentionOnly && Array.isArray(agentContextMessages) && agentContextMessages.length > 0;
+      console.log('🔍 Agent message filtering:', {
+        gooseMentionOnly,
+        hasAgentContext: Array.isArray(agentContextMessages) && agentContextMessages.length > 0,
+        shouldFilterAssistant,
+        totalMessages: baseForAgentRawAll.length,
+        assistantCount: baseForAgentRawAll.filter((m) => (m as any)?.role === 'assistant').length,
+      });
+      const baseForAgentRaw = shouldFilterAssistant
+        ? baseForAgentRawAll.filter((m) => (m as any)?.role === 'user')
+        : baseForAgentRawAll;
+      console.log('✅ After filtering:', {
+        filteredCount: baseForAgentRaw.length,
+        assistantRemaining: baseForAgentRaw.filter((m) => (m as any)?.role === 'assistant').length,
+      });
       const baseForAgent =
         baseForAgentRaw.length > MAX_AGENT_CONTEXT_MESSAGES
           ? baseForAgentRaw.slice(-MAX_AGENT_CONTEXT_MESSAGES)
@@ -969,7 +981,7 @@ export function useChatStream({
                 {
                   type: 'text',
                   text:
-                    'You are participating in a multi-human chat. When you are invoked with @goose, read the full conversation so far and respond to the ongoing topic. If the invocation message is meta or referential (e.g. "what do you think", "what\'s the answer", "help us here", "who\'s right", "what is it"), treat it as a request to answer the most recent substantive question/disagreement earlier in the chat. Do not ask for clarification if there is a clear preceding question or debate; only ask a clarifying question if there is genuinely no prior topic/question to answer.',
+                    'You are participating in a multi-human chat. When you are invoked with @goose, read the full conversation between them and respond. Do not ask for clarification if there is a clear preceding question or debate; only ask a clarifying question if there is genuinely no prior topic/question to answer.',
                 },
               ],
             } as Message)
